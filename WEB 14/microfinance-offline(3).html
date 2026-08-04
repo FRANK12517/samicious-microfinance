@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>SAMICIOUS Field &mdash; Offline Microfinance</title>
+<style>
+  :root{
+    --navy:#16233F;
+    --navy-2:#1E2F53;
+    --gold:#C89B3C;
+    --gold-dim:#9C7A2E;
+    --bg:#F5F4F1;
+    --panel:#FFFFFF;
+    --ink:#1B2230;
+    --ink-dim:#5B6272;
+    --line:#E3E1DA;
+    --good:#2F8F5B;
+    --bad:#B33A3A;
+    --radius:10px;
+  }
+  *,*::before,*::after{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  img,video,iframe,canvas{ max-width:100%; height:auto; }
+  button{ font-family:inherit; }
+  a{ color:inherit; }
+
+  /* ---------- App shell ---------- */
+  #app{ display:flex; min-height:100vh; min-height:100dvh; }
+
+  #sidebar{
+    width:15.5rem;
+    flex:0 0 auto;
+    background:var(--navy);
+    color:#fff;
+    display:flex;
+    flex-direction:column;
+    position:fixed;
+    top:0; left:0; bottom:0;
+    transform:translateX(-100%);
+    transition:transform .2s ease;
+    z-index:60;
+  }
+  #sidebar.open{ transform:translateX(0); }
+  @media (min-width:64rem){
+    #sidebar{ position:sticky; transform:none; }
+    #main{ margin-left:0; }
+  }
+
+  .brand{
+    padding:1.1rem 1.1rem .9rem;
+    border-bottom:1px solid rgba(255,255,255,.12);
+  }
+  .brand-name{ font-weight:700; font-size:1.05rem; letter-spacing:.02em; }
+  .brand-sub{ font-size:.72rem; color:#C7CEDF; margin-top:.15rem; }
+
+  .nav{ flex:1 1 auto; overflow-y:auto; padding:.6rem 0; }
+  .nav button{
+    width:100%; text-align:left; background:none; border:none; color:#E7EAF2;
+    padding:.85rem 1.1rem; font-size:.92rem; cursor:pointer;
+    display:flex; align-items:center; gap:.6rem;
+    min-height:48px;
+  }
+  .nav button .dot{ width:.4rem; height:.4rem; border-radius:50%; background:transparent; flex:0 0 auto; }
+  .nav button:hover{ background:rgba(255,255,255,.06); }
+  .nav button.active{ background:var(--navy-2); border-left:3px solid var(--gold); padding-left:calc(1.1rem - 3px); }
+  .nav button.active .dot{ background:var(--gold); }
+
+  .sidebar-foot{ padding:.9rem 1.1rem 1.1rem; border-top:1px solid rgba(255,255,255,.12); font-size:.72rem; color:#B7BFD2; }
+
+  #scrim{ position:fixed; inset:0; background:rgba(10,14,26,.45); z-index:55; display:none; }
+  #scrim.show{ display:block; }
+
+  #main{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+
+  #topbar{
+    background:var(--panel); border-bottom:1px solid var(--line);
+    padding:.7rem .9rem; display:flex; align-items:center; gap:.7rem; position:sticky; top:0; z-index:40;
+  }
+  #hamburger{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:2.75rem; height:2.75rem; border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer;
+  }
+  @media (min-width:64rem){ #hamburger{ display:none; } }
+  #topbar .title{ font-weight:700; font-size:1.02rem; }
+  #topbar .spacer{ flex:1 1 auto; }
+  #topbar .today{ font-size:.8rem; color:var(--ink-dim); }
+
+  #content{ padding:1rem; flex:1 1 auto; max-width:75rem; width:100%; margin:0 auto; }
+
+  .page{ display:none; }
+  .page.active{ display:block; }
+
+  /* ---------- Cards / layout bits ---------- */
+  .grid{ display:grid; gap:.8rem; grid-template-columns:repeat(auto-fit,minmax(11rem,1fr)); }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:1rem; }
+  .kpi .label{ font-size:.75rem; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.04em; }
+  .kpi .value{ font-size:1.5rem; font-weight:700; margin-top:.25rem; }
+  .kpi .value.good{ color:var(--good); }
+  .kpi .value.bad{ color:var(--bad); }
+
+  .section-head{ display:flex; align-items:center; gap:.6rem; margin:1.3rem 0 .6rem; flex-wrap:wrap; }
+  .section-head h2{ font-size:1.05rem; margin:0; }
+  .section-head .spacer{ flex:1 1 auto; }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:.4rem;
+    border:1px solid var(--line); background:#fff; color:var(--ink);
+    padding:.6rem .9rem; border-radius:8px; cursor:pointer; font-size:.85rem; min-height:44px;
+  }
+  .btn.primary{ background:var(--navy); border-color:var(--navy); color:#fff; }
+  .btn.gold{ background:var(--gold); border-color:var(--gold); color:#1B2230; font-weight:600; }
+  .btn.danger{ background:#fff; border-color:var(--bad); color:var(--bad); }
+  .btn.small{ padding:.4rem .7rem; min-height:36px; font-size:.78rem; }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+  input,select,textarea{
+    width:100%; padding:.6rem .65rem; border:1px solid var(--line); border-radius:8px;
+    font-size:.9rem; background:#fff; color:var(--ink); min-height:44px;
+  }
+  textarea{ min-height:4.5rem; }
+  label{ display:block; font-size:.78rem; color:var(--ink-dim); margin:.6rem 0 .25rem; }
+  .field-row{ display:grid; gap:.7rem; grid-template-columns:repeat(auto-fit,minmax(11rem,1fr)); }
+
+  .table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:var(--radius); background:#fff; }
+  table{ width:100%; border-collapse:collapse; font-size:.85rem; min-width:32rem; }
+  th,td{ text-align:left; padding:.6rem .7rem; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th{ background:#FAFAF8; font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-dim); }
+  tr:last-child td{ border-bottom:none; }
+  tr.clickable{ cursor:pointer; }
+  tr.clickable:hover{ background:#FAFAF8; }
+
+  .badge{ display:inline-block; padding:.15rem .5rem; border-radius:999px; font-size:.7rem; font-weight:600; }
+  .badge.ok{ background:#E6F3EB; color:var(--good); }
+  .badge.warn{ background:#FBEEDB; color:var(--gold-dim); }
+  .badge.bad{ background:#F8E7E7; color:var(--bad); }
+  .badge.grey{ background:#EEEEEC; color:var(--ink-dim); }
+
+  .empty{ padding:2rem 1rem; text-align:center; color:var(--ink-dim); font-size:.9rem; }
+
+  /* ---------- Modal ---------- */
+  #modalScrim{ position:fixed; inset:0; background:rgba(10,14,26,.5); display:none; align-items:flex-start; justify-content:center; z-index:80; padding:1rem; overflow-y:auto; }
+  #modalScrim.show{ display:flex; }
+  .modal{ background:#fff; border-radius:var(--radius); width:100%; max-width:34rem; margin:2rem auto; }
+  .modal-head{ display:flex; align-items:center; padding:1rem 1.1rem; border-bottom:1px solid var(--line); }
+  .modal-head h3{ margin:0; font-size:1rem; flex:1 1 auto; }
+  .modal-body{ padding:1.1rem; max-height:70vh; overflow-y:auto; }
+  .modal-foot{ padding:.9rem 1.1rem; border-top:1px solid var(--line); display:flex; gap:.6rem; justify-content:flex-end; }
+  .close-x{ background:none; border:none; font-size:1.1rem; cursor:pointer; width:44px; height:44px; }
+
+  .toast{ position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); background:var(--navy); color:#fff; padding:.7rem 1.1rem; border-radius:8px; font-size:.85rem; z-index:100; opacity:0; pointer-events:none; transition:opacity .2s ease; }
+  .toast.show{ opacity:1; }
+
+  .note{ font-size:.78rem; color:var(--ink-dim); }
+  .divider{ border:none; border-top:1px solid var(--line); margin:.9rem 0; }
+
+  /* ---------- Auth screen ---------- */
+  .auth-wrap{
+    min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center;
+    padding:1.2rem; background:var(--navy);
+  }
+  .auth-card{ background:#fff; border-radius:var(--radius); width:100%; max-width:24rem; padding:1.7rem 1.4rem; }
+  .auth-logo{ text-align:center; font-weight:700; font-size:1.15rem; color:var(--navy); }
+  .auth-sub{ text-align:center; font-size:.78rem; color:var(--ink-dim); margin:.3rem 0 1.2rem; }
+  .auth-tabs{ display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:1.1rem; }
+  .auth-tabs button{ flex:1 1 50%; border:none; background:#fff; padding:.7rem; font-size:.85rem; cursor:pointer; min-height:44px; }
+  .auth-tabs button.active{ background:var(--navy); color:#fff; }
+  .auth-form{ display:none; }
+  .auth-form.active{ display:block; }
+  .auth-error{ background:#F8E7E7; color:var(--bad); padding:.55rem .7rem; border-radius:8px; font-size:.8rem; margin-top:.8rem; display:none; }
+  .auth-error.show{ display:block; }
+</style>
+</head>
+<body>
+
+<div id="authScreen" class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo">SAMICIOUS Field</div>
+    <div class="auth-sub">Offline Microfinance &middot; sign in to continue</div>
+    <div class="auth-tabs">
+      <button type="button" id="tabLogin" class="active">Log In</button>
+    </div>
+
+    <form id="loginForm" class="auth-form active">
+      <label>Username</label>
+      <input id="loginUser" autocomplete="username">
+      <label>Password</label>
+      <input id="loginPass" type="password" autocomplete="current-password">
+      <div class="auth-error" id="loginError"></div>
+      <button type="submit" class="btn primary" style="width:100%;margin-top:1rem">Log In</button>
+    </form>
+
+    <p class="note" style="margin-top:1.1rem">Accounts are stored on this device only. This screen limits casual access to the app — it is not encryption or real network security. New staff accounts (Tellers, Susu Collectors, Branch Managers, Administrators) are created by an Administrator from inside the app — there is no public sign-up.</p>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <div id="scrim"></div>
+  <nav id="sidebar">
+    <div class="brand">
+      <div class="brand-name">SAMICIOUS Field</div>
+      <div class="brand-sub">Offline Microfinance &middot; Prototype</div>
+    </div>
+    <div class="nav" id="navList"></div>
+    <div class="sidebar-foot">
+      <div id="sessionUser" style="color:#fff;font-weight:600;margin-bottom:.15rem"></div>
+      <div id="sessionRole" style="color:#C7CEDF;font-size:.72rem;margin-bottom:.5rem"></div>
+      Data stored on this device only.<br>No server, no sync in this build.
+      <button id="logoutBtn" class="btn small" style="margin-top:.7rem;width:100%">Log Out</button>
+    </div>
+  </nav>
+
+  <div id="main">
+    <div id="topbar">
+      <button id="hamburger" aria-label="Open menu">&#9776;</button>
+      <div class="title" id="pageTitle">Dashboard</div>
+      <div class="spacer"></div>
+      <div class="today" id="todayLabel"></div>
+    </div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<div id="modalScrim">
+  <div class="modal" id="modal">
+    <div class="modal-head">
+      <h3 id="modalTitle">Title</h3>
+      <button class="close-x" id="modalClose">&times;</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot" id="modalFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* =========================================================================
+   DB LAYER — IndexedDB, promisified. Stores:
+     customers, accounts, transactions, loans, loanSchedule, counters
+   ========================================================================= */
+const DB_NAME = "mf_offline_v1";
+const DB_VERSION = 3;
+let db = null;
+
+/* Staff roles. "Administrator" can register new staff/administrator accounts;
+   the other roles use the rest of the app exactly as before. */
+const ROLES = ["Administrator","Branch Manager","Teller","Susu Collector"];
+let currentUser = null; // set after successful login / session restore
+
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e)=>{
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains("customers")){
+        const s = d.createObjectStore("customers",{keyPath:"id"});
+        s.createIndex("byNumber","customerNo",{unique:true});
+      }
+      if(!d.objectStoreNames.contains("accounts")){
+        const s = d.createObjectStore("accounts",{keyPath:"id"});
+        s.createIndex("byCustomer","customerId",{unique:false});
+        s.createIndex("byNumber","accountNo",{unique:true});
+      }
+      if(!d.objectStoreNames.contains("transactions")){
+        const s = d.createObjectStore("transactions",{keyPath:"id"});
+        s.createIndex("byAccount","accountId",{unique:false});
+      }
+      if(!d.objectStoreNames.contains("loans")){
+        const s = d.createObjectStore("loans",{keyPath:"id"});
+        s.createIndex("byCustomer","customerId",{unique:false});
+        s.createIndex("byNumber","loanNo",{unique:true});
+      }
+      if(!d.objectStoreNames.contains("loanSchedule")){
+        const s = d.createObjectStore("loanSchedule",{keyPath:"id"});
+        s.createIndex("byLoan","loanId",{unique:false});
+      }
+      if(!d.objectStoreNames.contains("counters")){
+        d.createObjectStore("counters",{keyPath:"name"});
+      }
+      let usersStore;
+      if(!d.objectStoreNames.contains("users")){
+        usersStore = d.createObjectStore("users",{keyPath:"username"});
+      }else{
+        usersStore = e.target.transaction.objectStore("users");
+      }
+      if(!usersStore.indexNames.contains("byRole")){
+        usersStore.createIndex("byRole","role",{unique:false});
+      }
+    };
+    req.onsuccess = (e)=>{ db = e.target.result; resolve(db); };
+    req.onerror = (e)=> reject(e);
+  });
+}
+
+function tx(storeNames, mode){
+  return db.transaction(storeNames, mode);
+}
+function put(store, val){
+  return new Promise((resolve,reject)=>{
+    const t = tx([store],"readwrite");
+    t.objectStore(store).put(val);
+    t.oncomplete = ()=>resolve(val);
+    t.onerror = (e)=>reject(e);
+  });
+}
+function getAll(store){
+  return new Promise((resolve,reject)=>{
+    const t = tx([store],"readonly");
+    const req = t.objectStore(store).getAll();
+    req.onsuccess = ()=>resolve(req.result || []);
+    req.onerror = (e)=>reject(e);
+  });
+}
+function get(store, key){
+  return new Promise((resolve,reject)=>{
+    const t = tx([store],"readonly");
+    const req = t.objectStore(store).get(key);
+    req.onsuccess = ()=>resolve(req.result || null);
+    req.onerror = (e)=>reject(e);
+  });
+}
+function getByIndex(store, index, key){
+  return new Promise((resolve,reject)=>{
+    const t = tx([store],"readonly");
+    const req = t.objectStore(store).index(index).getAll(key);
+    req.onsuccess = ()=>resolve(req.result || []);
+    req.onerror = (e)=>reject(e);
+  });
+}
+function delRec(store, key){
+  return new Promise((resolve,reject)=>{
+    const t = tx([store],"readwrite");
+    t.objectStore(store).delete(key);
+    t.oncomplete = ()=>resolve();
+    t.onerror = (e)=>reject(e);
+  });
+}
+function clearStore(store){
+  return new Promise((resolve,reject)=>{
+    const t = tx([store],"readwrite");
+    t.objectStore(store).clear();
+    t.oncomplete = ()=>resolve();
+    t.onerror = (e)=>reject(e);
+  });
+}
+
+async function nextNumber(name, prefix, pad){
+  const t = tx(["counters"],"readwrite");
+  const store = t.objectStore("counters");
+  const rec = await new Promise((res,rej)=>{
+    const r = store.get(name);
+    r.onsuccess = ()=>res(r.result || {name, value:0});
+    r.onerror = rej;
+  });
+  rec.value += 1;
+  await new Promise((res,rej)=>{ const r = store.put(rec); r.onsuccess=()=>res(); r.onerror=rej; });
+  return prefix + String(rec.value).padStart(pad,"0");
+}
+
+function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
+
+/* =========================================================================
+   HELPERS
+   ========================================================================= */
+function money(n){
+  n = Number(n)||0;
+  return "GHS " + n.toLocaleString("en-GH",{minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(iso){
+  if(!iso) return "-";
+  const d = new Date(iso+"T00:00:00");
+  return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+}
+function addMonths(iso, n){
+  const d = new Date(iso+"T00:00:00");
+  d.setMonth(d.getMonth()+n);
+  return d.toISOString().slice(0,10);
+}
+function esc(s){
+  return String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function toast(msg){
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>el.classList.remove("show"), 2200);
+}
+
+/* Modal helpers */
+function openModal(title, bodyHTML, footButtons){
+  document.getElementById("modalTitle").textContent = title;
+  document.getElementById("modalBody").innerHTML = bodyHTML;
+  const foot = document.getElementById("modalFoot");
+  foot.innerHTML = "";
+  (footButtons||[]).forEach(b=>{
+    const btn = document.createElement("button");
+    btn.className = "btn " + (b.cls||"");
+    btn.textContent = b.label;
+    btn.onclick = async (ev)=>{
+      try{
+        await b.onClick(ev);
+      }catch(err){
+        console.error(err);
+        toast("Could not save: " + (err && err.message ? err.message : "unexpected error"));
+      }
+    };
+    foot.appendChild(btn);
+  });
+  document.getElementById("modalScrim").classList.add("show");
+}
+function closeModal(){ document.getElementById("modalScrim").classList.remove("show"); }
+document.getElementById("modalClose").onclick = closeModal;
+document.getElementById("modalScrim").addEventListener("click", (e)=>{
+  if(e.target.id === "modalScrim") closeModal();
+});
+
+/* =========================================================================
+   NAVIGATION
+   ========================================================================= */
+const PAGES = [
+  {id:"dashboard", label:"Dashboard"},
+  {id:"customers", label:"Customers"},
+  {id:"savings", label:"Savings Accounts"},
+  {id:"loans", label:"Loans"},
+  {id:"reports", label:"Reports & Data"},
+  {id:"users", label:"Manage Users", adminOnly:true},
+];
+
+function isAdmin(){ return !!currentUser && currentUser.role === "Administrator"; }
+
+function buildNav(){
+  const nav = document.getElementById("navList");
+  nav.innerHTML = "";
+  PAGES.forEach(p=>{
+    if(p.adminOnly && !isAdmin()) return;
+    const b = document.createElement("button");
+    b.dataset.page = p.id;
+    b.innerHTML = '<span class="dot"></span><span>'+esc(p.label)+'</span>';
+    b.onclick = ()=> showPage(p.id);
+    nav.appendChild(b);
+  });
+}
+
+async function showPage(id){
+  if(id==="users" && !isAdmin()){
+    toast("Only Administrators can manage user accounts");
+    id = "dashboard";
+  }
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll("#navList button").forEach(b=>b.classList.toggle("active", b.dataset.page===id));
+  let el = document.getElementById("page-"+id);
+  if(!el){
+    el = document.createElement("div");
+    el.id = "page-"+id;
+    el.className = "page";
+    document.getElementById("content").appendChild(el);
+  }
+  el.classList.add("active");
+  const pageInfo = PAGES.find(p=>p.id===id);
+  document.getElementById("pageTitle").textContent = pageInfo ? pageInfo.label : "";
+  closeSidebar();
+  if(id==="dashboard") await renderDashboard(el);
+  if(id==="customers") await renderCustomers(el);
+  if(id==="savings") await renderSavings(el);
+  if(id==="loans") await renderLoans(el);
+  if(id==="reports") await renderReports(el);
+  if(id==="users") await renderUsers(el);
+}
+
+function openSidebar(){ document.getElementById("sidebar").classList.add("open"); document.getElementById("scrim").classList.add("show"); }
+function closeSidebar(){ document.getElementById("sidebar").classList.remove("open"); document.getElementById("scrim").classList.remove("show"); }
+document.getElementById("hamburger").onclick = openSidebar;
+document.getElementById("scrim").onclick = closeSidebar;
+
+/* =========================================================================
+   DASHBOARD
+   ========================================================================= */
+async function renderDashboard(el){
+  const [customers, accounts, txns, loans] = await Promise.all([
+    getAll("customers"), getAll("accounts"), getAll("transactions"), getAll("loans")
+  ]);
+  const today = todayISO();
+  const totalSavings = accounts.reduce((s,a)=> s + (a.balance||0), 0);
+  const activeLoans = loans.filter(l=>l.status==="active");
+  const outstanding = activeLoans.reduce((s,l)=> s + (l.outstandingPrincipal||0), 0);
+  const overdue = activeLoans.filter(l=> isLoanOverdue(l));
+  const todaysTxns = txns.filter(t=> t.date===today);
+  const todaysDeposits = todaysTxns.filter(t=>t.type==="deposit").reduce((s,t)=>s+t.amount,0);
+  const todaysWithdrawals = todaysTxns.filter(t=>t.type==="withdrawal").reduce((s,t)=>s+t.amount,0);
+
+  el.innerHTML = `
+    <div class="grid">
+      <div class="card kpi"><div class="label">Customers</div><div class="value">${customers.length}</div></div>
+      <div class="card kpi"><div class="label">Savings Accounts</div><div class="value">${accounts.length}</div></div>
+      <div class="card kpi"><div class="label">Total Savings Balance</div><div class="value">${money(totalSavings)}</div></div>
+      <div class="card kpi"><div class="label">Active Loans</div><div class="value">${activeLoans.length}</div></div>
+      <div class="card kpi"><div class="label">Outstanding Principal</div><div class="value">${money(outstanding)}</div></div>
+      <div class="card kpi"><div class="label">Loans Overdue</div><div class="value ${overdue.length? 'bad':''}">${overdue.length}</div></div>
+      <div class="card kpi"><div class="label">Today's Deposits</div><div class="value good">${money(todaysDeposits)}</div></div>
+      <div class="card kpi"><div class="label">Today's Withdrawals</div><div class="value bad">${money(todaysWithdrawals)}</div></div>
+    </div>
+
+    <div class="section-head"><h2>Quick Actions</h2></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(10rem,1fr))">
+      <button class="btn primary" id="qaCustomer">+ New Customer</button>
+      <button class="btn primary" id="qaAccount">+ Open Savings Account</button>
+      <button class="btn primary" id="qaDeposit">+ Deposit / Withdraw</button>
+      <button class="btn primary" id="qaLoan">+ New Loan Application</button>
+    </div>
+
+    ${customers.length===0 ? `
+    <div class="card" style="margin-top:1rem">
+      <p style="margin:0 0 .6rem">No data yet. Load sample data to explore the app, or start adding your own customers.</p>
+      <button class="btn gold" id="loadSample">Load Sample Data</button>
+    </div>` : ``}
+  `;
+  el.querySelector("#qaCustomer").onclick = ()=>openCustomerForm();
+  el.querySelector("#qaAccount").onclick = ()=>openAccountForm();
+  el.querySelector("#qaDeposit").onclick = ()=>openTxnPicker();
+  el.querySelector("#qaLoan").onclick = ()=>openLoanForm();
+  const sampleBtn = el.querySelector("#loadSample");
+  if(sampleBtn) sampleBtn.onclick = async ()=>{ await loadSampleData(); toast("Sample data loaded"); refreshAll(); };
+}
+
+function isLoanOverdue(loan){
+  if(loan.status!=="active") return false;
+  return loan.nextDueDate && loan.nextDueDate < todayISO() && loan.outstandingPrincipal>0;
+}
+
+/* =========================================================================
+   CUSTOMERS
+   ========================================================================= */
+async function renderCustomers(el){
+  const customers = await getAll("customers");
+  customers.sort((a,b)=> (b.createdAt||"").localeCompare(a.createdAt||""));
+  el.innerHTML = `
+    <div class="section-head">
+      <h2>Customers (${customers.length})</h2>
+      <div class="spacer"></div>
+      <input type="search" id="custSearch" placeholder="Search name, phone, ID..." style="max-width:16rem">
+      <button class="btn primary" id="newCustBtn">+ New Customer</button>
+    </div>
+    <div class="table-wrap"><table id="custTable">
+      <thead><tr><th>Customer No.</th><th>Name</th><th>Phone</th><th>Occupation</th><th>Registered</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  `;
+  el.querySelector("#newCustBtn").onclick = ()=>openCustomerForm();
+  const tbody = el.querySelector("tbody");
+  function draw(list){
+    if(list.length===0){ tbody.innerHTML = `<tr><td colspan="5" class="empty">No customers found</td></tr>`; return; }
+    tbody.innerHTML = list.map(c=>`
+      <tr class="clickable" data-id="${c.id}">
+        <td>${esc(c.customerNo)}</td>
+        <td>${esc(c.fullName)}</td>
+        <td>${esc(c.phone||"-")}</td>
+        <td>${esc(c.occupation||"-")}</td>
+        <td>${fmtDate(c.createdAt)}</td>
+      </tr>
+    `).join("");
+    tbody.querySelectorAll("tr").forEach(tr=>{
+      tr.onclick = ()=> openCustomerDetail(tr.dataset.id);
+    });
+  }
+  draw(customers);
+  el.querySelector("#custSearch").oninput = (e)=>{
+    const q = e.target.value.trim().toLowerCase();
+    if(!q){ draw(customers); return; }
+    draw(customers.filter(c =>
+      (c.fullName||"").toLowerCase().includes(q) ||
+      (c.phone||"").toLowerCase().includes(q) ||
+      (c.idNumber||"").toLowerCase().includes(q) ||
+      (c.customerNo||"").toLowerCase().includes(q)
+    ));
+  };
+}
+
+function openCustomerForm(existing){
+  const c = existing || {};
+  openModal(existing? "Edit Customer" : "New Customer", `
+    <label>Full Name *</label><input id="f_name" value="${esc(c.fullName||"")}">
+    <div class="field-row">
+      <div><label>Phone</label><input id="f_phone" value="${esc(c.phone||"")}"></div>
+      <div><label>Date of Birth</label><input id="f_dob" type="date" value="${esc(c.dob||"")}"></div>
+    </div>
+    <div class="field-row">
+      <div><label>National ID / Passport No.</label><input id="f_idnum" value="${esc(c.idNumber||"")}"></div>
+      <div><label>Occupation</label><input id="f_occ" value="${esc(c.occupation||"")}"></div>
+    </div>
+    <label>Address</label><textarea id="f_addr">${esc(c.address||"")}</textarea>
+    <div class="field-row">
+      <div><label>Emergency Contact Name</label><input id="f_ecname" value="${esc(c.emergencyName||"")}"></div>
+      <div><label>Emergency Contact Phone</label><input id="f_ecphone" value="${esc(c.emergencyPhone||"")}"></div>
+    </div>
+  `, [
+    {label:"Cancel", cls:"", onClick: closeModal},
+    {label: existing? "Save Changes" : "Register Customer", cls:"primary", onClick: async ()=>{
+      const fullName = document.getElementById("f_name").value.trim();
+      if(!fullName){ toast("Full name is required"); return; }
+      const rec = {
+        id: existing? c.id : uid(),
+        customerNo: existing? c.customerNo : await nextNumber("customer","CUS-",6),
+        fullName,
+        phone: document.getElementById("f_phone").value.trim(),
+        dob: document.getElementById("f_dob").value,
+        idNumber: document.getElementById("f_idnum").value.trim(),
+        occupation: document.getElementById("f_occ").value.trim(),
+        address: document.getElementById("f_addr").value.trim(),
+        emergencyName: document.getElementById("f_ecname").value.trim(),
+        emergencyPhone: document.getElementById("f_ecphone").value.trim(),
+        createdAt: existing? c.createdAt : todayISO(),
+      };
+      await put("customers", rec);
+      closeModal();
+      toast(existing? "Customer updated" : "Customer registered: " + rec.customerNo);
+      showPage("customers");
+    }}
+  ]);
+}
+
+async function openCustomerDetail(id){
+  const c = await get("customers", id);
+  if(!c) return;
+  const accounts = await getByIndex("accounts","byCustomer",id);
+  const loans = await getByIndex("loans","byCustomer",id);
+  openModal(c.fullName, `
+    <p class="note">Customer No: <strong>${esc(c.customerNo)}</strong> &middot; Registered ${fmtDate(c.createdAt)}</p>
+    <div class="field-row">
+      <div><label>Phone</label><div>${esc(c.phone||"-")}</div></div>
+      <div><label>Occupation</label><div>${esc(c.occupation||"-")}</div></div>
+    </div>
+    <div><label>ID Number</label><div>${esc(c.idNumber||"-")}</div></div>
+    <div><label>Address</label><div>${esc(c.address||"-")}</div></div>
+    <hr class="divider">
+    <label>Savings Accounts (${accounts.length})</label>
+    ${accounts.length? accounts.map(a=>`<div>${esc(a.accountNo)} &middot; ${esc(a.type)} &middot; ${money(a.balance)}</div>`).join("") : '<div class="note">None yet</div>'}
+    <hr class="divider">
+    <label>Loans (${loans.length})</label>
+    ${loans.length? loans.map(l=>`<div>${esc(l.loanNo)} &middot; ${money(l.principal)} &middot; <span class="badge ${statusBadge(l.status)}">${esc(l.status)}</span></div>`).join("") : '<div class="note">None yet</div>'}
+  `, [
+    {label:"Edit", cls:"", onClick: ()=>{ closeModal(); openCustomerForm(c); }},
+    {label:"Open Savings Account", cls:"primary", onClick: ()=>{ closeModal(); openAccountForm(c); }},
+    {label:"New Loan", cls:"gold", onClick: ()=>{ closeModal(); openLoanForm(c); }},
+  ]);
+}
+
+function statusBadge(status){
+  if(status==="active") return "ok";
+  if(status==="pending") return "warn";
+  if(status==="closed"||status==="rejected"||status==="written_off") return "bad";
+  return "grey";
+}
+
+/* =========================================================================
+   SAVINGS ACCOUNTS
+   ========================================================================= */
+async function renderSavings(el){
+  const [accounts, customers] = await Promise.all([getAll("accounts"), getAll("customers")]);
+  const custMap = Object.fromEntries(customers.map(c=>[c.id,c]));
+  accounts.sort((a,b)=> (b.openedAt||"").localeCompare(a.openedAt||""));
+  el.innerHTML = `
+    <div class="section-head">
+      <h2>Savings Accounts (${accounts.length})</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" id="newAcctBtn">+ Open Account</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Account No.</th><th>Customer</th><th>Type</th><th>Balance</th><th>Opened</th><th></th></tr></thead>
+      <tbody>
+      ${accounts.length===0? `<tr><td colspan="6" class="empty">No savings accounts yet</td></tr>` :
+        accounts.map(a=>`
+        <tr>
+          <td>${esc(a.accountNo)}</td>
+          <td>${esc(custMap[a.customerId]? custMap[a.customerId].fullName : "Unknown")}</td>
+          <td>${esc(a.type)}</td>
+          <td>${money(a.balance)}</td>
+          <td>${fmtDate(a.openedAt)}</td>
+          <td><button class="btn small" data-id="${a.id}">Open</button></td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div>
+  `;
+  el.querySelector("#newAcctBtn").onclick = ()=>openAccountForm();
+  el.querySelectorAll("tbody button[data-id]").forEach(b=>{
+    b.onclick = ()=> openAccountDetail(b.dataset.id);
+  });
+}
+
+async function openAccountForm(customer){
+  const customers = await getAll("customers");
+  if(customers.length===0){ toast("Register a customer first"); return; }
+  const options = customers.map(c=>`<option value="${c.id}" ${customer && customer.id===c.id?"selected":""}>${esc(c.fullName)} (${esc(c.customerNo)})</option>`).join("");
+  openModal("Open Savings Account", `
+    <label>Customer *</label>
+    <select id="f_cust">${options}</select>
+    <label>Account Type</label>
+    <select id="f_type">
+      <option value="Individual Savings">Individual Savings</option>
+      <option value="Group Savings">Group Savings</option>
+      <option value="Daily Susu">Daily Susu (Daily Collection)</option>
+      <option value="Fixed Deposit">Fixed Deposit</option>
+    </select>
+    <label>Opening Deposit (GHS)</label>
+    <input id="f_open" type="number" min="0" step="0.01" value="0">
+  `, [
+    {label:"Cancel", cls:"", onClick: closeModal},
+    {label:"Open Account", cls:"primary", onClick: async ()=>{
+      const customerId = document.getElementById("f_cust").value;
+      const type = document.getElementById("f_type").value;
+      const opening = parseFloat(document.getElementById("f_open").value)||0;
+      const prefix = type==="Group Savings" ? "GRP-" : type==="Fixed Deposit" ? "FXD-" : "SAV-";
+      const accountNo = await nextNumber("account_"+prefix, prefix, 6);
+      const acc = { id: uid(), accountNo, customerId, type, balance: opening, openedAt: todayISO() };
+      await put("accounts", acc);
+      if(opening>0){
+        await put("transactions", { id: uid(), accountId: acc.id, type:"deposit", amount: opening, date: todayISO(), note:"Opening deposit" });
+      }
+      closeModal();
+      toast("Account opened: " + accountNo);
+      showPage("savings");
+    }}
+  ]);
+}
+
+async function openAccountDetail(id){
+  const acc = await get("accounts", id);
+  if(!acc) return;
+  const customer = await get("customers", acc.customerId);
+  const txns = await getByIndex("transactions","byAccount",id);
+  txns.sort((a,b)=> (b.date+b.id).localeCompare(a.date+a.id));
+  openModal(acc.accountNo + " &middot; " + (customer? customer.fullName : ""), `
+    <div class="card kpi" style="margin-bottom:.8rem"><div class="label">Balance</div><div class="value">${money(acc.balance)}</div></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Note</th></tr></thead>
+      <tbody>
+      ${txns.length===0? `<tr><td colspan="4" class="empty">No transactions yet</td></tr>` :
+        txns.map(t=>`<tr><td>${fmtDate(t.date)}</td><td>${t.type==="deposit"?"Deposit":"Withdrawal"}</td><td>${t.type==="withdrawal"?"-":""}${money(t.amount)}</td><td>${esc(t.note||"-")}</td></tr>`).join("")}
+      </tbody>
+    </table></div>
+  `, [
+    {label:"Withdraw", cls:"danger", onClick: ()=> openTxnForm(acc, "withdrawal")},
+    {label:"Deposit", cls:"primary", onClick: ()=> openTxnForm(acc, "deposit")},
+  ]);
+}
+
+async function openTxnPicker(){
+  const accounts = await getAll("accounts");
+  if(accounts.length===0){ toast("Open a savings account first"); return; }
+  const customers = await getAll("customers");
+  const custMap = Object.fromEntries(customers.map(c=>[c.id,c]));
+  const options = accounts.map(a=>`<option value="${a.id}">${esc(a.accountNo)} &middot; ${esc(custMap[a.customerId]?custMap[a.customerId].fullName:"")}</option>`).join("");
+  openModal("Deposit / Withdraw", `
+    <label>Account *</label><select id="f_acct">${options}</select>
+  `, [
+    {label:"Cancel", cls:"", onClick: closeModal},
+    {label:"Continue", cls:"primary", onClick: async ()=>{
+      const acc = await get("accounts", document.getElementById("f_acct").value);
+      closeModal();
+      openAccountDetail(acc.id);
+    }}
+  ]);
+}
+
+function openTxnForm(acc, type){
+  openModal((type==="deposit"?"Deposit to ":"Withdraw from ") + acc.accountNo, `
+    <p class="note">Current balance: ${money(acc.balance)}</p>
+    <label>Amount (GHS) *</label><input id="f_amt" type="number" min="0.01" step="0.01">
+    <label>Note</label><input id="f_note" placeholder="e.g. daily collection, field visit">
+  `, [
+    {label:"Cancel", cls:"", onClick: closeModal},
+    {label: type==="deposit"?"Record Deposit":"Record Withdrawal", cls: type==="deposit"?"primary":"danger", onClick: async ()=>{
+      const amt = parseFloat(document.getElementById("f_amt").value);
+      if(!amt || amt<=0){ toast("Enter a valid amount"); return; }
+      if(type==="withdrawal" && amt > acc.balance){ toast("Amount exceeds available balance"); return; }
+      const fresh = await get("accounts", acc.id);
+      fresh.balance = type==="deposit" ? fresh.balance + amt : fresh.balance - amt;
+      await put("accounts", fresh);
+      await put("transactions", { id: uid(), accountId: acc.id, type, amount: amt, date: todayISO(), note: document.getElementById("f_note").value.trim() });
+      closeModal();
+      toast((type==="deposit"?"Deposit":"Withdrawal") + " recorded");
+      showPage("savings");
+    }}
+  ]);
+}
+
+/* =========================================================================
+   LOANS
+   ========================================================================= */
+async function renderLoans(el){
+  const [loans, customers] = await Promise.all([getAll("loans"), getAll("customers")]);
+  const custMap = Object.fromEntries(customers.map(c=>[c.id,c]));
+  loans.sort((a,b)=> (b.createdAt||"").localeCompare(a.createdAt||""));
+  el.innerHTML = `
+    <div class="section-head">
+      <h2>Loans (${loans.length})</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" id="newLoanBtn">+ New Application</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Loan No.</th><th>Customer</th><th>Principal</th><th>Outstanding</th><th>Status</th><th>Next Due</th><th></th></tr></thead>
+      <tbody>
+      ${loans.length===0? `<tr><td colspan="7" class="empty">No loans yet</td></tr>` :
+        loans.map(l=>`
+        <tr>
+          <td>${esc(l.loanNo)}</td>
+          <td>${esc(custMap[l.customerId]? custMap[l.customerId].fullName : "Unknown")}</td>
+          <td>${money(l.principal)}</td>
+          <td>${l.status==="active"?money(l.outstandingPrincipal):"-"}</td>
+          <td><span class="badge ${statusBadge(l.status)}">${esc(l.status).replace("_"," ")}</span>${isLoanOverdue(l)?' <span class="badge bad">overdue</span>':''}</td>
+          <td>${l.status==="active"? fmtDate(l.nextDueDate) : "-"}</td>
+          <td><button class="btn small" data-id="${l.id}">Open</button></td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div>
+  `;
+  el.querySelector("#newLoanBtn").onclick = ()=>openLoanForm();
+  el.querySelectorAll("tbody button[data-id]").forEach(b=> b.onclick = ()=> openLoanDetail(b.dataset.id));
+}
+
+async function openLoanForm(customer){
+  const customers = await getAll("customers");
+  if(customers.length===0){ toast("Register a customer first"); return; }
+  const options = customers.map(c=>`<option value="${c.id}" ${customer && customer.id===c.id?"selected":""}>${esc(c.fullName)} (${esc(c.customerNo)})</option>`).join("");
+  openModal("New Loan Application", `
+    <label>Customer *</label><select id="f_cust">${options}</select>
+    <div class="field-row">
+      <div><label>Principal Amount (GHS) *</label><input id="f_prin" type="number" min="1" step="0.01"></div>
+      <div><label>Term (months) *</label><input id="f_term" type="number" min="1" step="1" value="6"></div>
+    </div>
+    <div class="field-row">
+      <div><label>Flat Interest Rate (% per month)</label><input id="f_rate" type="number" min="0" step="0.1" value="3"></div>
+      <div><label>Purpose</label><input id="f_purpose" placeholder="e.g. trading capital"></div>
+    </div>
+    <label>Guarantor Name</label><input id="f_guar">
+    <p class="note">Repayment schedule is calculated as flat interest, split into equal monthly installments. This is a simplified model for the prototype.</p>
+  `, [
+    {label:"Cancel", cls:"", onClick: closeModal},
+    {label:"Submit Application", cls:"primary", onClick: async ()=>{
+      const principal = parseFloat(document.getElementById("f_prin").value);
+      const term = parseInt(document.getElementById("f_term").value,10);
+      const rate = parseFloat(document.getElementById("f_rate").value)||0;
+      if(!principal || principal<=0 || !term || term<=0){ toast("Enter valid amount and term"); return; }
+      const loanNo = await nextNumber("loan","LN-",6);
+      const loan = {
+        id: uid(), loanNo,
+        customerId: document.getElementById("f_cust").value,
+        principal, termMonths: term, monthlyRate: rate,
+        purpose: document.getElementById("f_purpose").value.trim(),
+        guarantor: document.getElementById("f_guar").value.trim(),
+        status: "pending",
+        createdAt: todayISO(),
+        outstandingPrincipal: 0, nextDueDate: null,
+      };
+      await put("loans", loan);
+      closeModal();
+      toast("Loan application submitted: " + loanNo);
+      showPage("loans");
+    }}
+  ]);
+}
+
+async function openLoanDetail(id){
+  const loan = await get("loans", id);
+  if(!loan) return;
+  const customer = await get("customers", loan.customerId);
+  const schedule = (await getByIndex("loanSchedule","byLoan",id)).sort((a,b)=>a.installmentNo-b.installmentNo);
+
+  const totalInterest = loan.principal * (loan.monthlyRate/100) * loan.termMonths;
+  const totalRepayable = loan.principal + totalInterest;
+
+  let scheduleHTML = "";
+  if(schedule.length){
+    scheduleHTML = `
+      <div class="table-wrap" style="margin-top:.8rem"><table>
+        <thead><tr><th>#</th><th>Due Date</th><th>Installment</th><th>Paid</th><th>Status</th></tr></thead>
+        <tbody>
+        ${schedule.map(s=>`<tr><td>${s.installmentNo}</td><td>${fmtDate(s.dueDate)}</td><td>${money(s.amount)}</td><td>${money(s.paid)}</td>
+        <td><span class="badge ${s.paid>=s.amount?'ok':(s.dueDate<todayISO()?'bad':'grey')}">${s.paid>=s.amount?'Paid':(s.dueDate<todayISO()?'Overdue':'Upcoming')}</span></td></tr>`).join("")}
+        </tbody>
+      </table></div>`;
+  }
+
+  const footButtons = [];
+  if(loan.status==="pending"){
+    footButtons.push({label:"Reject", cls:"danger", onClick: async ()=>{ loan.status="rejected"; await put("loans",loan); closeModal(); toast("Loan rejected"); showPage("loans"); }});
+    footButtons.push({label:"Approve", cls:"primary", onClick: async ()=>{ loan.status="approved"; await put("loans",loan); closeModal(); toast("Loan approved — ready to disburse"); openLoanDetail(id); }});
+  }
+  if(loan.status==="approved"){
+    footButtons.push({label:"Disburse Loan", cls:"gold", onClick: ()=> disburseLoan(loan)});
+  }
+  if(loan.status==="active"){
+    footButtons.push({label:"Record Repayment", cls:"primary", onClick: ()=> openRepaymentForm(loan)});
+    footButtons.push({label:"Write Off", cls:"danger", onClick: async ()=>{
+      if(!confirm("Write off remaining balance of "+money(loan.outstandingPrincipal)+"?")) return;
+      loan.status="written_off"; await put("loans",loan); closeModal(); toast("Loan written off"); showPage("loans");
+    }});
+  }
+
+  openModal(loan.loanNo + " &middot; " + (customer? customer.fullName : ""), `
+    <p><span class="badge ${statusBadge(loan.status)}">${esc(loan.status).replace("_"," ")}</span></p>
+    <div class="field-row">
+      <div><label>Principal</label><div>${money(loan.principal)}</div></div>
+      <div><label>Term</label><div>${loan.termMonths} months</div></div>
+    </div>
+    <div class="field-row">
+      <div><label>Flat Interest</label><div>${loan.monthlyRate}% / month</div></div>
+      <div><label>Total Repayable</label><div>${money(totalRepayable)}</div></div>
+    </div>
+    ${loan.status==="active"||loan.status==="closed"||loan.status==="written_off" ? `
+    <div class="field-row">
+      <div><label>Outstanding Principal</label><div>${money(loan.outstandingPrincipal)}</div></div>
+      <div><label>Next Due Date</label><div>${loan.nextDueDate? fmtDate(loan.nextDueDate) : "-"}</div></div>
+    </div>` : ``}
+    <div><label>Purpose</label><div>${esc(loan.purpose||"-")}</div></div>
+    <div><label>Guarantor</label><div>${esc(loan.guarantor||"-")}</div></div>
+    ${scheduleHTML}
+  `, footButtons);
+}
+
+async function disburseLoan(loan){
+  const totalInterest = loan.principal * (loan.monthlyRate/100) * loan.termMonths;
+  const totalRepayable = loan.principal + totalInterest;
+  const installment = Math.round((totalRepayable / loan.termMonths) * 100) / 100;
+  loan.status = "active";
+  loan.disbursedAt = todayISO();
+  loan.outstandingPrincipal = totalRepayable;
+  loan.nextDueDate = addMonths(todayISO(), 1);
+  await put("loans", loan);
+
+  for(let i=1;i<=loan.termMonths;i++){
+    await put("loanSchedule", {
+      id: uid(), loanId: loan.id, installmentNo:i,
+      dueDate: addMonths(todayISO(), i),
+      amount: installment, paid:0,
+    });
+  }
+  closeModal();
+  toast("Loan disbursed: " + loan.loanNo);
+  showPage("loans");
+}
+
+async function openRepaymentForm(loan){
+  const schedule = (await getByIndex("loanSchedule","byLoan",loan.id)).sort((a,b)=>a.installmentNo-b.installmentNo);
+  const next = schedule.find(s=>s.paid < s.amount);
+  openModal("Repayment — " + loan.loanNo, `
+    <p class="note">Outstanding balance: ${money(loan.outstandingPrincipal)}</p>
+    ${next ? `<p class="note">Next installment #${next.installmentNo} due ${fmtDate(next.dueDate)}: ${money(next.amount - next.paid)} remaining</p>` : `<p class="note">All installments settled.</p>`}
+    <label>Amount Received (GHS) *</label><input id="f_amt" type="number" min="0.01" step="0.01">
+    <label>Channel</label>
+    <select id="f_channel"><option>Cash</option><option>Mobile Money</option><option>Bank</option></select>
+  `, [
+    {label:"Cancel", cls:"", onClick: closeModal},
+    {label:"Record Repayment", cls:"primary", onClick: async ()=>{
+      const amt = parseFloat(document.getElementById("f_amt").value);
+      if(!amt || amt<=0){ toast("Enter a valid amount"); return; }
+      let remaining = amt;
+      const freshSchedule = (await getByIndex("loanSchedule","byLoan",loan.id)).sort((a,b)=>a.installmentNo-b.installmentNo);
+      for(const inst of freshSchedule){
+        if(remaining<=0) break;
+        const due = inst.amount - inst.paid;
+        if(due<=0) continue;
+        const apply = Math.min(due, remaining);
+        inst.paid += apply;
+        remaining -= apply;
+        await put("loanSchedule", inst);
+      }
+      const freshLoan = await get("loans", loan.id);
+      freshLoan.outstandingPrincipal = Math.max(0, freshLoan.outstandingPrincipal - amt);
+      const unpaid = freshSchedule.find(s=> s.paid < s.amount);
+      freshLoan.nextDueDate = unpaid ? unpaid.dueDate : null;
+      if(freshLoan.outstandingPrincipal<=0){ freshLoan.status = "closed"; }
+      await put("loans", freshLoan);
+      closeModal();
+      toast("Repayment of " + money(amt) + " recorded");
+      showPage("loans");
+    }}
+  ]);
+}
+
+/* =========================================================================
+   REPORTS & DATA
+   ========================================================================= */
+async function renderReports(el){
+  const [customers, accounts, txns, loans] = await Promise.all([
+    getAll("customers"), getAll("accounts"), getAll("transactions"), getAll("loans")
+  ]);
+  el.innerHTML = `
+    <div class="section-head"><h2>Export Data</h2></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(12rem,1fr))">
+      <div class="card"><p style="margin-top:0">Customers (${customers.length})</p><button class="btn primary small" id="expCust">Export CSV</button></div>
+      <div class="card"><p style="margin-top:0">Savings transactions (${txns.length})</p><button class="btn primary small" id="expTxn">Export CSV</button></div>
+      <div class="card"><p style="margin-top:0">Loan portfolio (${loans.length})</p><button class="btn primary small" id="expLoans">Export CSV</button></div>
+    </div>
+
+    <div class="section-head"><h2>App Data</h2></div>
+    <div class="card">
+      <p class="note">All data lives only in this browser's local storage on this device. Nothing is transmitted anywhere. Use Export CSV above to back up or share data manually.</p>
+      <button class="btn" id="loadSample2">Load Sample Data</button>
+      <button class="btn danger" id="clearAll">Erase All Data</button>
+    </div>
+  `;
+  el.querySelector("#expCust").onclick = ()=> exportCSV("customers.csv", customers, ["customerNo","fullName","phone","idNumber","occupation","address","createdAt"]);
+  el.querySelector("#expTxn").onclick = ()=> exportCSV("savings_transactions.csv", txns, ["date","accountId","type","amount","note"]);
+  el.querySelector("#expLoans").onclick = ()=> exportCSV("loans.csv", loans, ["loanNo","customerId","principal","termMonths","monthlyRate","status","outstandingPrincipal","nextDueDate","createdAt"]);
+  el.querySelector("#loadSample2").onclick = async ()=>{ await loadSampleData(); toast("Sample data loaded"); refreshAll(); };
+  el.querySelector("#clearAll").onclick = async ()=>{
+    if(!confirm("This will permanently erase all customers, accounts, transactions, and loans on this device. Continue?")) return;
+    await Promise.all(["customers","accounts","transactions","loans","loanSchedule","counters"].map(clearStore));
+    toast("All data erased");
+    refreshAll();
+  };
+}
+
+function exportCSV(filename, rows, columns){
+  if(rows.length===0){ toast("Nothing to export"); return; }
+  const lines = [columns.join(",")];
+  rows.forEach(r=>{
+    lines.push(columns.map(c=>{
+      let v = r[c]==null? "" : String(r[c]);
+      if(v.includes(",")||v.includes('"')) v = '"' + v.replace(/"/g,'""') + '"';
+      return v;
+    }).join(","));
+  });
+  const blob = new Blob([lines.join("\n")], {type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+/* =========================================================================
+   SAMPLE DATA
+   ========================================================================= */
+async function loadSampleData(){
+  const names = [
+    ["Akosua Mensah","Trader","Ekumfi Otuam"],
+    ["Kwame Asante","Farmer","Ekumfi Narkwa"],
+    ["Efua Baidoo","Seamstress","Ekumfi Essarkyir"],
+    ["Yaw Boateng","Fisherman","Ekumfi Immuna"],
+  ];
+  for(const [fullName, occupation, address] of names){
+    const customerNo = await nextNumber("customer","CUS-",6);
+    const cust = { id: uid(), customerNo, fullName, occupation, address, phone:"024"+Math.floor(1000000+Math.random()*8999999), dob:"1985-01-01", idNumber:"GHA-"+Math.floor(100000+Math.random()*899999), emergencyName:"", emergencyPhone:"", createdAt: todayISO() };
+    await put("customers", cust);
+
+    const accountNo = await nextNumber("account_SAV-","SAV-",6);
+    const opening = Math.round((200+Math.random()*800)*100)/100;
+    const acc = { id: uid(), accountNo, customerId: cust.id, type:"Individual Savings", balance: opening, openedAt: todayISO() };
+    await put("accounts", acc);
+    await put("transactions", { id: uid(), accountId: acc.id, type:"deposit", amount: opening, date: todayISO(), note:"Opening deposit (sample)" });
+  }
+  const sampleCustomers = await getAll("customers");
+  const first = sampleCustomers[0];
+  if(first){
+    const loanNo = await nextNumber("loan","LN-",6);
+    const loan = { id: uid(), loanNo, customerId:first.id, principal:1000, termMonths:6, monthlyRate:3, purpose:"Trading capital (sample)", guarantor:"", status:"pending", createdAt: todayISO(), outstandingPrincipal:0, nextDueDate:null };
+    await put("loans", loan);
+  }
+}
+
+/* =========================================================================
+   MANAGE USERS — Administrator-only. Lets the logged-in Administrator
+   register Tellers, Susu Collectors, Branch Managers, and other
+   Administrators. New accounts are NOT auto-logged-in: the person they were
+   created for signs in for themselves from the login page.
+   ========================================================================= */
+async function renderUsers(el){
+  const users = await getAll("users");
+  users.sort((a,b)=> (b.createdAt||"").localeCompare(a.createdAt||""));
+  el.innerHTML = `
+    <div class="section-head">
+      <h2>Staff Accounts (${users.length})</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" id="newUserBtn">+ Register New User</button>
+    </div>
+    <p class="note">Newly registered staff are not signed in automatically — give them their username and password so they can log in themselves from the login page.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Full Name</th><th>Username</th><th>Role</th><th>Registered</th></tr></thead>
+      <tbody>
+      ${users.length===0? `<tr><td colspan="4" class="empty">No staff accounts yet</td></tr>` :
+        users.map(u=>`
+        <tr>
+          <td>${esc(u.fullName||u.displayName||u.username)}</td>
+          <td>${esc(u.username)}</td>
+          <td><span class="badge ${u.role==='Administrator'?'ok':'grey'}">${esc(u.role||"Administrator")}</span></td>
+          <td>${fmtDate(u.createdAt)}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div>
+  `;
+  el.querySelector("#newUserBtn").onclick = ()=>openUserForm();
+}
+
+function openUserForm(){
+  const roleOptions = ROLES.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join("");
+  openModal("Register New User", `
+    <label>Full Name *</label><input id="u_name" autocomplete="off">
+    <label>Username *</label><input id="u_user" autocomplete="off">
+    <label>Password *</label><input id="u_pass" type="password" autocomplete="new-password">
+    <label>Role *</label>
+    <select id="u_role">${roleOptions}</select>
+    <div class="auth-error" id="u_error"></div>
+  `, [
+    {label:"Cancel", cls:"", onClick: closeModal},
+    {label:"Register Account", cls:"primary", onClick: async ()=>{
+      const errEl = document.getElementById("u_error");
+      errEl.classList.remove("show"); errEl.textContent = "";
+      const fullName = document.getElementById("u_name").value.trim();
+      const rawUser = document.getElementById("u_user").value.trim();
+      const key = userKey(rawUser);
+      const pass = document.getElementById("u_pass").value;
+      const role = document.getElementById("u_role").value;
+      if(!fullName || !key || !pass || !role){
+        errEl.textContent = "Fill in every field"; errEl.classList.add("show"); return;
+      }
+      if(pass.length < 4){
+        errEl.textContent = "Password must be at least 4 characters"; errEl.classList.add("show"); return;
+      }
+      const existing = await get("users", key);
+      if(existing){
+        errEl.textContent = "That username is already taken"; errEl.classList.add("show"); return;
+      }
+      const rec = { username:key, displayName: rawUser, fullName, password: pass, role, createdAt: todayISO() };
+      await put("users", rec);
+      closeModal();
+      toast("Account created for " + fullName + " (" + role + "). They can now log in with their username and password.");
+      await showPage("users");
+    }}
+  ]);
+}
+
+/* =========================================================================
+   AUTH — local-only login gate. Credentials live in this browser's
+   IndexedDB; there is no server, so this is an access screen, not encryption.
+   New accounts are created only by a logged-in Administrator via
+   Manage Users — there is no public sign-up.
+   ========================================================================= */
+const SESSION_KEY = "mf_session_user";
+
+function userKey(username){ return String(username||"").trim().toLowerCase(); }
+
+async function seedDefaultUser(){
+  // Required default Administrator account.
+  const admin = await get("users", "edugyamfi");
+  if(!admin){
+    await put("users", {
+      username: "edugyamfi",
+      displayName: "edugyamfi",
+      fullName: "Edugyamfi",
+      password: "12345",
+      role: "Administrator",
+      createdAt: todayISO(),
+    });
+  }else if(!admin.role){
+    admin.role = "Administrator";
+    await put("users", admin);
+  }
+  // Legacy default user kept for continuity; treated as Administrator too
+  // so it does not lose any access it previously had.
+  const legacy = await get("users", "frank abban");
+  if(!legacy){
+    await put("users", {
+      username: "frank abban",
+      displayName: "FRANK ABBAN",
+      fullName: "Frank Abban",
+      password: "12345",
+      role: "Administrator",
+      createdAt: todayISO(),
+    });
+  }else if(!legacy.role){
+    legacy.role = "Administrator";
+    await put("users", legacy);
+  }
+}
+
+function showAuthScreen(){
+  document.getElementById("authScreen").style.display = "flex";
+  document.getElementById("app").style.display = "none";
+}
+
+function showAppScreen(user){
+  currentUser = user;
+  document.getElementById("authScreen").style.display = "none";
+  document.getElementById("app").style.display = "flex";
+  document.getElementById("sessionUser").textContent = "Logged in as " + (user.displayName || user.fullName || user.username);
+  document.getElementById("sessionRole").textContent = user.role || "Administrator";
+  buildNav();
+}
+
+function setAuthError(id, msg){
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.classList.toggle("show", !!msg);
+}
+
+function wireAuthUI(){
+  const loginForm = document.getElementById("loginForm");
+
+  loginForm.onsubmit = async (e)=>{
+    e.preventDefault();
+    setAuthError("loginError","");
+    const key = userKey(document.getElementById("loginUser").value);
+    const pass = document.getElementById("loginPass").value;
+    if(!key || !pass){ setAuthError("loginError","Enter your username and password"); return; }
+    try{
+      const user = await get("users", key);
+      if(!user || user.password !== pass){
+        setAuthError("loginError","Incorrect username or password");
+        return;
+      }
+      localStorage.setItem(SESSION_KEY, key);
+      showAppScreen(user);
+      await showPage("dashboard");
+    }catch(err){
+      console.error(err);
+      setAuthError("loginError","Could not log in: " + (err && err.message ? err.message : "unexpected error"));
+    }
+  };
+
+  document.getElementById("logoutBtn").onclick = ()=>{
+    currentUser = null;
+    localStorage.removeItem(SESSION_KEY);
+    location.reload();
+  };
+}
+
+/* =========================================================================
+   INIT
+   ========================================================================= */
+function refreshAll(){
+  const activeBtn = document.querySelector("#navList button.active");
+  showPage(activeBtn ? activeBtn.dataset.page : "dashboard");
+}
+
+async function init(){
+  await openDB();
+  await seedDefaultUser();
+  document.getElementById("todayLabel").textContent = fmtDate(todayISO());
+  wireAuthUI();
+
+  const sessionKey = localStorage.getItem(SESSION_KEY);
+  if(sessionKey){
+    const user = await get("users", sessionKey);
+    if(user){
+      showAppScreen(user);
+      await showPage("dashboard");
+      return;
+    }
+    localStorage.removeItem(SESSION_KEY);
+  }
+  showAuthScreen();
+}
+init();
+
+})();
+</script>
+</body>
+</html>
