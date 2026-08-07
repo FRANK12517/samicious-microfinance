@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/samicious-microfinance/',
+  base: process.env.GITHUB_PAGES ? '/samicious-microfinance/' : '/',
 });
