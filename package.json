@@ -1,6 +1,11 @@
 {
+  "private": true,
+  "type": "module",
   "scripts": {
-    "build": "vite build"
+    "build": "vite build",
+    "start:security-gateway": "node server/index.mjs",
+    "check": "node --check server/index.mjs && node --check server/authz.mjs",
+    "test:security": "node --test test/security.test.mjs"
   },
   "devDependencies": {
     "vite": "^5.4.19"
