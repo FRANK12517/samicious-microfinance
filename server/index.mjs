@@ -42,7 +42,7 @@ const STAFF_PASSWORD_ITERATIONS = 150000;
 const STAFF_PASSWORD_SYMBOLS = "@#$%^&*()";
 
 function staffPasswordPrefix(fullName) {
-  const letters = String(fullName || "").normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").match(/[A-Za-z]/g) || [];
+  const letters = String(fullName || "").match(/[A-Za-z]/g) || [];
   if (letters.length < 3) return "";
   return letters.slice(0, 3).join("").replace(/^([A-Za-z])([A-Za-z])([A-Za-z])$/, (_, first, second, third) => first.toUpperCase() + second.toLowerCase() + third.toLowerCase());
 }

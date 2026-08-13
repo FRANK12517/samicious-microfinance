@@ -24,6 +24,18 @@ for (const name of ["Enest Abban", "Ama Mensah", "Justine Doe"]) {
   });
 }
 
+test("live requirement state marks partial passwords red and satisfied rules green", () => {
+  const partial = context.staffPasswordRequirementState("#", "Enest Abban");
+  assert.equal(partial.symbol, true);
+  assert.equal(partial.length, false);
+  assert.equal(partial.uppercase, false);
+  assert.equal(partial.lowercase, false);
+  assert.equal(partial.digits, false);
+  assert.equal(partial.namePattern, false);
+  const complete = context.staffPasswordRequirementState("#Ene190", "Enest Abban");
+  assert.equal(Object.values(complete).every(Boolean), true);
+});
+
 test("invalid eight-character staff passwords are rejected", () => {
   assert.equal(context.staffPasswordMeetsPolicy("#Just186", "Justine Doe").ok, false);
 });
