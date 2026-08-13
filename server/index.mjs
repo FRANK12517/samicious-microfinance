@@ -167,8 +167,8 @@ function safeSupportReport(input={},context){
     connectivity:cleanSupportText(input.connectivity,40),
     userDescription:cleanSupportText(input.userDescription,1200),
     attemptedSteps:Array.isArray(input.attemptedSteps)?input.attemptedSteps.map(step=>cleanSupportText(step,240)).filter(Boolean).slice(0,20):[],
-    status:"OPEN",
-    createdAt:new Date().toISOString(),
+    status:["OPEN","IN_PROGRESS","RESOLVED","CLOSED"].includes(String(input.status||""))?String(input.status):"OPEN",
+    createdAt:cleanSupportText(input.createdAt,80)||new Date().toISOString(),
     createdByUserId:cleanSupportText(context?.userId||context?.username,120)
   };
   return report;

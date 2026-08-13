@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+const source=fs.readFileSync(new URL("../index.html",import.meta.url),"utf8");
+const required=["@media(max-width:760px)",".settings-layout",".help-toolbar",".help-context-actions",".support-flow",".admin-help-manager","sidebarSettingsBtn","logoutBtn","renderSettings","renderHelpCenter","renderTroubleshootingEngine","renderSupportEscalation"];
+for(const marker of required) assert.equal(source.includes(marker),true,`missing responsive/integration marker: ${marker}`);
+assert.equal(source.includes('grid-template-columns:1fr'),true);
+const settingsStyle=(source.match(/style\.textContent="([^"]+)";/)||[])[1]||"";
+assert.equal(settingsStyle.includes('overflow-x'),false,"new Settings/Help styles must not introduce horizontal overflow");
+assert.equal(source.includes('window.location'),false,"Settings/Help must not navigate through URL secrets");
+console.log(`Static responsive audit passed (${required.length} markers).`);
