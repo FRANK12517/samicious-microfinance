@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 const source=fs.readFileSync(new URL("../index.html",import.meta.url),"utf8");
-const required=["@media(max-width:760px)",".settings-layout",".help-toolbar",".help-context-actions",".support-flow",".admin-help-manager","sidebarSettingsBtn","logoutBtn","renderSettings","renderHelpCenter","renderTroubleshootingEngine","renderSupportEscalation"];
+const required=["@media(max-width:760px)",".settings-layout",".help-toolbar",".help-context-actions",".support-flow",".admin-help-manager","sidebarSettingsBtn","logoutBtn","renderSettings","renderHelpCenter","renderTroubleshootingEngine","renderSupportEscalation","wirePasswordVisibilityToggle","password-visibility-toggle","aria-controls","aria-pressed"];
 for(const marker of required) assert.equal(source.includes(marker),true,`missing responsive/integration marker: ${marker}`);
 assert.equal(source.includes('grid-template-columns:1fr'),true);
+assert.equal(source.includes('toggle.type="button"'),true,"password visibility control must not submit the login form");
+assert.equal(source.includes('input.parentNode.insertBefore(toggle,input.nextSibling)'),true,"toggle must preserve the protected login input position");
+assert.equal(source.includes('input.type=showing?"password":"text"'),true,"toggle must switch masked and visible password states");
 const settingsStyle=(source.match(/style\.textContent="([^"]+)";/)||[])[1]||"";
 assert.equal(settingsStyle.includes('overflow-x'),false,"new Settings/Help styles must not introduce horizontal overflow");
 assert.equal(source.includes('window.location'),false,"Settings/Help must not navigate through URL secrets");
