@@ -17,7 +17,8 @@ export const ROLE_PERMISSIONS = Object.freeze({
 
 export const DEVELOPER_TABLES = new Set(["devSmsConfig", "security_audit_log"]);
 export const AUTHORIZATION_TABLES = new Set(["users", "userRoles", "roles", "permissions", "tenantScopes"]);
-export const ADMINISTRATOR_ONLY_RPCS = new Set(["rpc_generate_username", "rpc_hash_staff_password", "rpc_migrate_privileged_defaults"]);
+export const ADMINISTRATOR_ONLY_RPCS = new Set(["rpc_generate_username", "rpc_hash_staff_password", "rpc_migrate_privileged_defaults", "rpc_help_content_save", "rpc_help_content_delete", "rpc_support_report_list"]);
+export const SUPPORT_MANAGEMENT_TABLES = new Set(["helpContent", "supportReports"]);
 
 export const RPC_POLICY = Object.freeze({
   rpc_verify_login: { public: true },
@@ -29,6 +30,11 @@ export const RPC_POLICY = Object.freeze({
   rpc_settings_capabilities: { permission: "data:read" },
   rpc_settings_read: { permission: "data:read" },
   rpc_settings_save: { permission: "data:write" },
+  rpc_support_report_create: { permission: "data:read" },
+  rpc_support_report_list: { permission: "admin:read" },
+  rpc_help_content_list: { permission: "data:read" },
+  rpc_help_content_save: { permission: "admin:write" },
+  rpc_help_content_delete: { permission: "admin:write" },
   rpc_logout: { permission: "data:read" },
   rpc_table_select_all: { permission: "data:read" },
   rpc_table_select_one: { permission: "data:read" },
@@ -77,6 +83,7 @@ export function authorizeRpc(context, fnName, params = {}) {
     if (!base.allowed) return base;
     return normalizeRole(context.role) === "Administrator" ? base : { allowed: false, status: 403, reason: "administrator_required" };
   }
+  if (SUPPORT_MANAGEMENT_TABLES.has(table)) return { allowed: false, status: 403, reason: "use_protected_support_endpoint" };
   if (DEVELOPER_TABLES.has(table)) return authorize(context, { permission: "developer:write" });
   if (AUTHORIZATION_TABLES.has(table)) {
     const base = authorize(context, { permission: "admin:write" });

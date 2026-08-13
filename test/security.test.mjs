@@ -69,6 +69,20 @@ test("Settings capabilities use the authenticated backend role", () => {
   assert.equal(source.includes("const role=String(context?.role||\"\");"), true);
 });
 
+test("Support escalation and Administrator Help management are protected and sanitized", () => {
+  const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const authz = fs.readFileSync(new URL("../server/authz.mjs", import.meta.url), "utf8");
+  const server = fs.readFileSync(new URL("../server/index.mjs", import.meta.url), "utf8");
+  for (const step of ["1. Follow troubleshooting","2. Retry safely","3. Check connectivity and synchronization","4. Contact Supervisor / Branch Manager","5. Escalate to Administrator / CEO"]) assert.equal(source.includes(step), true);
+  for (const field of ["rpc_support_report_create","supportReportPayload","userDescription","attemptedSteps","deviceInformation","connectivity","rpc_support_report_list"]) assert.equal(source.includes(field)||server.includes(field), true);
+  for (const feature of ["renderHelpAdminMarkup","rpc_help_content_list","rpc_help_content_save","rpc_help_content_delete","Administrator Help Management","Support Reports"]) assert.equal(source.includes(feature)||server.includes(feature), true);
+  for (const secret of ["p_report.password","p_content.password"]) assert.equal(source.includes(secret), false);
+  assert.equal(authz.includes("rpc_help_content_save"), true);
+  assert.equal(authz.includes("rpc_help_content_delete"), true);
+  assert.equal(authz.includes("rpc_support_report_list"), true);
+  assert.equal(authz.includes("SUPPORT_MANAGEMENT_TABLES"), true);
+});
+
 test("Help Center is context-aware and preserves originating module context", () => {
   const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   for (const context of ["Customer","Savings","Loan","Repayment","Cashier","Field Collection","End-of-Day","Reporting","Settings"]) assert.equal(source.includes('label:"'+context+'"'), true);

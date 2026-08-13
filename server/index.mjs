@@ -130,7 +130,7 @@ function redactCredentialMaterial(value) {
 const SETTINGS_KEY_PREFIX="user-settings::";
 function settingsDefaults(role){
   const admin=role==="Administrator";
-  return {account:true,security:true,passwordManagement:admin,loginSession:true,notifications:true,appearance:true,language:true,accessibility:true,offlineSync:true,privacy:true,applicationPreferences:true,helpSupport:true,developerInformation:role==="Developer"||admin,about:true};
+  return {account:true,security:true,passwordManagement:admin,loginSession:true,notifications:true,appearance:true,language:true,accessibility:true,offlineSync:true,privacy:true,applicationPreferences:true,helpSupport:true,helpManagement:admin,developerInformation:role==="Developer"||admin,about:true};
 }
 async function settingsCapabilities(params, context){
   const role=String(context?.role||"");
@@ -149,6 +149,59 @@ async function settingsSave(params,token){
   const record={key:SETTINGS_KEY_PREFIX+username,username,preferences:safePreferences,updatedAt:new Date().toISOString(),updatedByUserId:username};
   await supabaseRpc("rpc_table_upsert",{p_token:token,p_table:"policySettings",p_data:record});
   return {saved:true,username,updatedAt:record.updatedAt,preferences:safePreferences};
+}
+function cleanSupportText(value,max=800){
+  return String(value??"").replace(/(password|passcode|secret|token|api[_-]?key|jwt|database|service[_-]?role)[^\n,;]*/gi,"[redacted]").replace(/[<>]/g,"").slice(0,max).trim();
+}
+function safeSupportReport(input={},context){
+  const report={
+    id:cleanSupportText(input.id,80)||crypto.randomUUID(),
+    role:cleanSupportText(context?.role,80),
+    userId:cleanSupportText(context?.userId||context?.username,120),
+    module:cleanSupportText(input.module,120),
+    problemCategory:cleanSupportText(input.problemCategory,120),
+    timestamp:cleanSupportText(input.timestamp,80)||new Date().toISOString(),
+    transactionReference:cleanSupportText(input.transactionReference,100),
+    applicationVersion:cleanSupportText(input.applicationVersion,40),
+    deviceInformation:cleanSupportText(input.deviceInformation,240),
+    connectivity:cleanSupportText(input.connectivity,40),
+    userDescription:cleanSupportText(input.userDescription,1200),
+    attemptedSteps:Array.isArray(input.attemptedSteps)?input.attemptedSteps.map(step=>cleanSupportText(step,240)).filter(Boolean).slice(0,20):[],
+    status:"OPEN",
+    createdAt:new Date().toISOString(),
+    createdByUserId:cleanSupportText(context?.userId||context?.username,120)
+  };
+  return report;
+}
+async function createSupportReport(params,token,context){
+  const report=safeSupportReport(params?.p_report||{},context);
+  await supabaseRpc("rpc_table_upsert",{p_token:token,p_table:"supportReports",p_data:report});
+  return {created:true,report};
+}
+async function listSupportReports(params,token){
+  const rows=await supabaseRpc("rpc_table_select_all",{p_token:token,p_table:"supportReports"});
+  return (Array.isArray(rows)?rows:[]).map(row=>safeSupportReport(row,{role:row.role,userId:row.userId})).sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))).slice(0,200);
+}
+function safeHelpContent(row){
+  if(!row||typeof row!=="object")return null;
+  return {id:cleanSupportText(row.id,100),title:cleanSupportText(row.title,180),category:cleanSupportText(row.category,100),module:cleanSupportText(row.module,100),roles:Array.isArray(row.roles)?row.roles.map(r=>cleanSupportText(r,80)).slice(0,20):[],purpose:cleanSupportText(row.purpose,600),instructions:Array.isArray(row.instructions)?row.instructions.map(s=>cleanSupportText(s,500)).slice(0,30):[],expectedResult:cleanSupportText(row.expectedResult,500),troubleshooting:cleanSupportText(row.troubleshooting,700),escalation:cleanSupportText(row.escalation,700),active:row.active!==false,updatedAt:cleanSupportText(row.updatedAt,80),updatedByUserId:cleanSupportText(row.updatedByUserId,120)};
+}
+async function listHelpContent(params,token){
+  const rows=await supabaseRpc("rpc_table_select_all",{p_token:token,p_table:"helpContent"});
+  return (Array.isArray(rows)?rows:[]).map(safeHelpContent).filter(Boolean).filter(row=>row.active!==false);
+}
+async function saveHelpContent(params,token,context){
+  const source=params?.p_content&&typeof params.p_content==="object"?params.p_content:{};
+  const content=safeHelpContent(Object.assign({},source,{id:source.id||crypto.randomUUID(),updatedAt:new Date().toISOString(),updatedByUserId:context?.userId||context?.username,active:source.active!==false}));
+  if(!content.title||!content.category)throw Object.assign(new Error("help_content_title_and_category_required"),{status:400});
+  await supabaseRpc("rpc_table_upsert",{p_token:token,p_table:"helpContent",p_data:content});
+  return {saved:true,content};
+}
+async function deleteHelpContent(params,token){
+  const id=cleanSupportText(params?.p_id,100);
+  if(!id)throw Object.assign(new Error("help_content_id_required"),{status:400});
+  await supabaseRpc("rpc_table_delete",{p_token:token,p_table:"helpContent",p_key:id});
+  return {deleted:true,id};
 }
 async function migratePrivilegedDefaults(params, token) {
   const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "users" });
@@ -247,6 +300,11 @@ async function handle(req, res) {
     if (fnName === "rpc_settings_capabilities") return json(res, 200, { data: await settingsCapabilities(params, context) });
     if (fnName === "rpc_settings_read") return json(res, 200, { data: await settingsRead(params, token) });
     if (fnName === "rpc_settings_save") return json(res, 200, { data: await settingsSave(params, token) });
+    if (fnName === "rpc_support_report_create") return json(res, 200, { data: await createSupportReport(params, token, context) });
+    if (fnName === "rpc_support_report_list") return json(res, 200, { data: await listSupportReports(params, token) });
+    if (fnName === "rpc_help_content_list") return json(res, 200, { data: await listHelpContent(params, token) });
+    if (fnName === "rpc_help_content_save") return json(res, 200, { data: await saveHelpContent(params, token, context) });
+    if (fnName === "rpc_help_content_delete") return json(res, 200, { data: await deleteHelpContent(params, token) });
     if (fnName === "rpc_generate_username") return json(res, 200, { data: await generateUsername(params, token) });
     if (fnName === "rpc_hash_staff_password") return json(res, 200, { data: await hashStaffPasswordRequest(params) });
     if (fnName === "rpc_migrate_privileged_defaults") return json(res, 200, { data: await migratePrivilegedDefaults(params, token) });
