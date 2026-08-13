@@ -50,6 +50,19 @@ test("Settings is a single sidebar entry immediately above Log Out", () => {
   assert.equal(source.includes('settingsButton.onclick=()=>'),true);
 });
 
+test("Developer Information is consolidated into Settings without a competing page", () => {
+  const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.equal((source.match(/function renderDevAbout/g)||[]).length,1);
+  assert.equal(source.includes('function renderDevAbout(el){ openSettingsSection("developer"); }'),true);
+  for (const content of ["FRANKIT CONSULT","Official Developer and Intellectual Property Owner","abbanfrank38@gmail.com","+233 24 191 1273","SMF-1.0.0-B20260712","Copyright © 2026 FRANKIT CONSULT","Data Protection Act, 2012"]) assert.equal(source.includes(content),true);
+  for (const secret of ["SUPABASE_SERVICE_ROLE=","SUPABASE_SERVICE_KEY=","JWT_SECRET=","PRIVATE_KEY="]) assert.equal(source.includes(secret),false);
+});
+
+test("About Settings includes safe status and Administrator-only system detail", () => {
+  const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  for (const field of ["System status","Connectivity","Synchronization","Last recorded update","Administrator System Information","Client data schema","Role-based access control with server authorization"]) assert.equal(source.includes(field),true);
+});
+
 test("Settings capabilities use the authenticated backend role", () => {
   const source = fs.readFileSync(new URL("../server/index.mjs", import.meta.url), "utf8");
   assert.equal(source.includes("async function settingsCapabilities(params, context)"), true);
