@@ -39,6 +39,23 @@ test("settings RPCs are authenticated and scoped to the current user", () => {
   assert.equal(authorizeRpc(staff, "rpc_settings_delete", { p_username: "staff" }).allowed, false);
 });
 
+test("Settings is a single sidebar entry immediately above Log Out", () => {
+  const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const settingsIndex=source.indexOf('id="sidebarSettingsBtn"');
+  const logoutIndex=source.indexOf('id="logoutBtn"');
+  assert.ok(settingsIndex>=0);
+  assert.ok(logoutIndex>settingsIndex);
+  assert.equal((source.match(/id="sidebarSettingsBtn"/g)||[]).length,1);
+  assert.equal((source.match(/id="logoutBtn"/g)||[]).length,1);
+  assert.equal(source.includes('settingsButton.onclick=()=>'),true);
+});
+
+test("Settings capabilities use the authenticated backend role", () => {
+  const source = fs.readFileSync(new URL("../server/index.mjs", import.meta.url), "utf8");
+  assert.equal(source.includes("async function settingsCapabilities(params, context)"), true);
+  assert.equal(source.includes("const role=String(context?.role||\"\");"), true);
+});
+
 test("centralized Settings route and categories are present", () => {
   const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.equal(source.includes('id:"settings",label:"Settings"'), true);

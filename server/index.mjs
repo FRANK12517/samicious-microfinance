@@ -132,8 +132,8 @@ function settingsDefaults(role){
   const admin=role==="Administrator";
   return {account:true,security:true,passwordManagement:admin,loginSession:true,notifications:true,appearance:true,language:true,accessibility:true,offlineSync:true,privacy:true,applicationPreferences:true,helpSupport:true,developerInformation:role==="Developer"||admin,about:true};
 }
-async function settingsCapabilities(params){
-  const role=String(params?.p_role||"");
+async function settingsCapabilities(params, context){
+  const role=String(context?.role||"");
   return {role,categories:settingsDefaults(role)};
 }
 async function settingsRead(params,token){
@@ -244,7 +244,7 @@ async function handle(req, res) {
   if (!policy.public) params.p_token = token;
   try {
     if (fnName === "rpc_verify_login") return json(res, 200, { data: await verifyLoginRequest(params) });
-    if (fnName === "rpc_settings_capabilities") return json(res, 200, { data: await settingsCapabilities(params) });
+    if (fnName === "rpc_settings_capabilities") return json(res, 200, { data: await settingsCapabilities(params, context) });
     if (fnName === "rpc_settings_read") return json(res, 200, { data: await settingsRead(params, token) });
     if (fnName === "rpc_settings_save") return json(res, 200, { data: await settingsSave(params, token) });
     if (fnName === "rpc_generate_username") return json(res, 200, { data: await generateUsername(params, token) });
