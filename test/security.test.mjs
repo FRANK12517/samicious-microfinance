@@ -29,6 +29,26 @@ test("only administrators may migrate privileged defaults", () => {
   assert.equal(authorizeRpc(admin, "rpc_get_privileged_defaults", {}).allowed, false);
 });
 
+test("settings RPCs are authenticated and scoped to the current user", () => {
+  const admin = { username: "adugyamfi", role: "Administrator", active: true };
+  const staff = { username: "staff", role: "Teller", active: true };
+  assert.equal(authorizeRpc(staff, "rpc_settings_capabilities", { p_username: "staff" }).allowed, true);
+  assert.equal(authorizeRpc(staff, "rpc_settings_read", { p_username: "staff" }).allowed, true);
+  assert.equal(authorizeRpc(staff, "rpc_settings_save", { p_username: "other" }).allowed, false);
+  assert.equal(authorizeRpc(admin, "rpc_settings_save", { p_username: "staff" }).allowed, true);
+  assert.equal(authorizeRpc(staff, "rpc_settings_delete", { p_username: "staff" }).allowed, false);
+});
+
+test("centralized Settings route and categories are present", () => {
+  const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.equal(source.includes('id:"settings",label:"Settings"'), true);
+  assert.equal(source.includes("async function renderSettings(el)"), true);
+  for (const category of ["Account & Profile","Security","Password Management","Login & Session","Notifications","Appearance","Language","Accessibility","Offline & Synchronization","Privacy","Application Preferences","Help & Support","Developer Information","About Samicious Microfinance"]) assert.equal(source.includes(category), true);
+  assert.equal(source.includes("rpc_settings_capabilities"), true);
+  assert.equal(source.includes("rpc_settings_read"), true);
+  assert.equal(source.includes("rpc_settings_save"), true);
+});
+
 test("only administrators may generate usernames", () => {
   const admin = { username: "admin", role: "Administrator", active: true };
   const staff = { username: "staff", role: "Teller", active: true };

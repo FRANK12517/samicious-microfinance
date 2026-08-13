@@ -26,6 +26,9 @@ export const RPC_POLICY = Object.freeze({
   rpc_generate_username: { permission: "admin:write" },
   rpc_hash_staff_password: { permission: "admin:write" },
   rpc_migrate_privileged_defaults: { permission: "admin:write" },
+  rpc_settings_capabilities: { permission: "data:read" },
+  rpc_settings_read: { permission: "data:read" },
+  rpc_settings_save: { permission: "data:write" },
   rpc_logout: { permission: "data:read" },
   rpc_table_select_all: { permission: "data:read" },
   rpc_table_select_one: { permission: "data:read" },
@@ -62,6 +65,13 @@ export function authorize(context, { permission, scope } = {}) {
 
 export function authorizeRpc(context, fnName, params = {}) {
   const table = String(params.p_table || "");
+  if (["rpc_settings_capabilities", "rpc_settings_read", "rpc_settings_save"].includes(fnName)) {
+    const base = authorize(context, { permission: RPC_POLICY[fnName].permission });
+    if (!base.allowed) return base;
+    const requested = String(params.p_username || "");
+    if (requested && requested !== String(context.username || context.userId || "") && normalizeRole(context.role) !== "Administrator") return { allowed: false, status: 403, reason: "settings_scope_violation" };
+    return base;
+  }
   if (ADMINISTRATOR_ONLY_RPCS.has(fnName)) {
     const base = authorize(context, { permission: "admin:write" });
     if (!base.allowed) return base;

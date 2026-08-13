@@ -127,6 +127,29 @@ function redactCredentialMaterial(value) {
   return safe;
 }
 
+const SETTINGS_KEY_PREFIX="user-settings::";
+function settingsDefaults(role){
+  const admin=role==="Administrator";
+  return {account:true,security:true,passwordManagement:admin,loginSession:true,notifications:true,appearance:true,language:true,accessibility:true,offlineSync:true,privacy:true,applicationPreferences:true,helpSupport:true,developerInformation:role==="Developer"||admin,about:true};
+}
+async function settingsCapabilities(params){
+  const role=String(params?.p_role||"");
+  return {role,categories:settingsDefaults(role)};
+}
+async function settingsRead(params,token){
+  const username=String(params?.p_username||"");
+  const row=await supabaseRpc("rpc_table_select_one",{p_token:token,p_table:"policySettings",p_key:SETTINGS_KEY_PREFIX+username});
+  return row&&typeof row==="object"?redactCredentialMaterial(row):{key:SETTINGS_KEY_PREFIX+username,username,preferences:{}};
+}
+async function settingsSave(params,token){
+  const username=String(params?.p_username||"");
+  const preferences=params?.p_preferences&&typeof params.p_preferences==="object"?params.p_preferences:{};
+  const allowedKeys=new Set(["theme","language","fontScale","highContrast","reducedMotion","notificationsEnabled","soundEnabled","autoSync","offlineMode","telemetryEnabled"]);
+  const safePreferences=Object.fromEntries(Object.entries(preferences).filter(([key])=>allowedKeys.has(key)).map(([key,value])=>[key,typeof value==="boolean"||typeof value==="number"||typeof value==="string"?value:null]));
+  const record={key:SETTINGS_KEY_PREFIX+username,username,preferences:safePreferences,updatedAt:new Date().toISOString(),updatedByUserId:username};
+  await supabaseRpc("rpc_table_upsert",{p_token:token,p_table:"policySettings",p_data:record});
+  return {saved:true,username,updatedAt:record.updatedAt,preferences:safePreferences};
+}
 async function migratePrivilegedDefaults(params, token) {
   const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "users" });
   const existingRows = Array.isArray(rows) ? rows : [];
@@ -221,6 +244,9 @@ async function handle(req, res) {
   if (!policy.public) params.p_token = token;
   try {
     if (fnName === "rpc_verify_login") return json(res, 200, { data: await verifyLoginRequest(params) });
+    if (fnName === "rpc_settings_capabilities") return json(res, 200, { data: await settingsCapabilities(params) });
+    if (fnName === "rpc_settings_read") return json(res, 200, { data: await settingsRead(params, token) });
+    if (fnName === "rpc_settings_save") return json(res, 200, { data: await settingsSave(params, token) });
     if (fnName === "rpc_generate_username") return json(res, 200, { data: await generateUsername(params, token) });
     if (fnName === "rpc_hash_staff_password") return json(res, 200, { data: await hashStaffPasswordRequest(params) });
     if (fnName === "rpc_migrate_privileged_defaults") return json(res, 200, { data: await migratePrivilegedDefaults(params, token) });
