@@ -69,10 +69,18 @@ test("Settings capabilities use the authenticated backend role", () => {
   assert.equal(source.includes("const role=String(context?.role||\"\");"), true);
 });
 
+test("Help Center is context-aware and preserves originating module context", () => {
+  const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  for (const context of ["Customer","Savings","Loan","Repayment","Cashier","Field Collection","End-of-Day","Reporting","Settings"]) assert.equal(source.includes('label:"'+context+'"'), true);
+  for (const action of ["How do I register a customer?","How do I record a savings deposit?","How do I process a loan repayment?","How do I complete End-of-Day?","How do I manage Settings?"]) assert.equal(source.includes(action), true);
+  for (const feature of ["activeHelpContext","lastOperationalHelpContext","helpContextForPage","helpContextScore","prioritizeHelp","data-help-query","Context detected from"]) assert.equal(source.includes(feature), true);
+  assert.equal(source.includes('if(id!=="settings"){activeHelpContext=helpContextForPage(id,pageLabel);if(activeHelpContext.kind!=="general")lastOperationalHelpContext=activeHelpContext;}'), true);
+});
+
 test("Troubleshooting Engine covers required problems and safe diagnostic flow", () => {
   const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   for (const problem of ["I cannot log in","My password is not working","I cannot find a customer","A transaction failed","A transaction did not save","The balance is incorrect","A loan is not showing","A repayment is missing","The application is offline","Data is not synchronizing","I cannot access a feature","I cannot print a receipt","A report is incorrect","Cash does not balance","I cannot complete End-of-Day","The application is slow"]) assert.equal(source.includes(problem), true);
-  for (const feature of ["function renderTroubleshootingEngine(root,initialQuery=\"\")","safeTroubleDiagnostics","PROBLEM","CHECK","USER ACTION","SUCCESS?","ESCALATE","#copyTroubleDiagnostics","navigator.clipboard","transactionReference","applicationVersion","connectivity"]) assert.equal(source.includes(feature), true);
+  for (const feature of ["function renderTroubleshootingEngine(root,initialQuery=\"\",context=activeHelpContext)","safeTroubleDiagnostics","PROBLEM","CHECK","USER ACTION","SUCCESS?","ESCALATE","#copyTroubleDiagnostics","navigator.clipboard","transactionReference","applicationVersion","connectivity"]) assert.equal(source.includes(feature), true);
   for (const secret of ["p_password","passwordHash","apiKey","accessToken","JWT_SECRET"]) assert.equal(source.includes('diag.'+secret), false);
 });
 
