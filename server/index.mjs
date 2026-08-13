@@ -97,11 +97,65 @@ async function validateUserUpsert(params, token) {
     return !sameRecord;
   });
   if (duplicate) throw Object.assign(new Error("username_already_taken"), { status: 409 });
-  return Object.assign({}, data, { username });
+  return Object.assign({}, existing || {}, data, { username });
 }
 
-function privilegedDefaults() {
-  return { version: PRIVILEGED_DEFAULTS_VERSION, accounts: PRIVILEGED_DEFAULTS };
+async function verifyLoginRequest(params) {
+  const username = normalizeUsername(params?.p_username);
+  const password = String(params?.p_password || "");
+  if (!username || !password) return { ok: false, reason: "invalid_credentials" };
+  const rows = await supabaseRpc("rpc_get_login_material", { p_username: username });
+  const material = Array.isArray(rows) ? rows[0] : rows;
+  if (!material) return { ok: false, reason: "invalid_credentials" };
+  if (material.active === false || material.usernameRevoked || material.passwordRevoked) return { ok: false, reason: "account_revoked" };
+  let valid = false;
+  if (material.passwordHash && material.passwordSalt) {
+    const computed = pbkdf2Sync(password, Buffer.from(material.passwordSalt, "hex"), Number(material.passwordIterations) || 150000, 32, "sha256").toString("hex");
+    valid = computed === material.passwordHash;
+  } else if (typeof material.password === "string") {
+    valid = material.password === password;
+  }
+  if (!valid) return { ok: false, reason: "invalid_credentials" };
+  return { ok: true, username: material.username, role: material.role, active: material.active !== false, usernameRevoked: false, passwordRevoked: false, sessionEpoch: Number(material.sessionEpoch) || 0 };
+}
+
+function redactCredentialMaterial(value) {
+  if (Array.isArray(value)) return value.map(redactCredentialMaterial);
+  if (!value || typeof value !== "object") return value;
+  const safe = { ...value };
+  for (const key of ["password", "passwordHash", "passwordSalt", "passwordIterations", "passwordAlgo", "passwordHistory"]) delete safe[key];
+  return safe;
+}
+
+async function migratePrivilegedDefaults(params, token) {
+  const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "users" });
+  const existingRows = Array.isArray(rows) ? rows : [];
+  const specs = [
+    { key: "administrator", aliases: ["edugyamfi"] },
+    { key: "developer", aliases: ["frank abban", "developer"] },
+  ];
+  const results = [];
+  for (const spec of specs) {
+    const account = PRIVILEGED_DEFAULTS[spec.key];
+    const target = existingRows.find((row) => row.username === account.username);
+    const alias = target ? null : existingRows.find((row) => spec.aliases.includes(row.username));
+    const record = Object.assign({}, target || alias || {}, account, {
+      active: true,
+      credentialStatus: "ACTIVE",
+      defaultPasswordChanged: false,
+      passwordSetupRequired: false,
+      privilegedDefaultsVersion: PRIVILEGED_DEFAULTS_VERSION,
+      technicalOnly: account.role === "Developer",
+      createdAt: (target || alias)?.createdAt || new Date().toISOString(),
+      createdByUserId: (target || alias)?.createdByUserId || "system",
+    });
+    await supabaseRpc("rpc_table_upsert", { p_token: token, p_table: "users", p_data: record });
+    for (const old of existingRows.filter((row) => spec.aliases.includes(row.username) && row.username !== account.username)) {
+      await supabaseRpc("rpc_table_upsert", { p_token: token, p_table: "users", p_data: { ...old, active: false, credentialStatus: "REVOKED", usernameRevoked: true, revocationReason: "Replaced by the current privileged default account" } });
+    }
+    results.push({ username: account.username, role: account.role, status: "ACTIVE" });
+  }
+  return { version: PRIVILEGED_DEFAULTS_VERSION, accounts: results };
 }
 
 async function hashStaffPasswordRequest(params) {
@@ -166,12 +220,14 @@ async function handle(req, res) {
   delete params.p_token;
   if (!policy.public) params.p_token = token;
   try {
+    if (fnName === "rpc_verify_login") return json(res, 200, { data: await verifyLoginRequest(params) });
     if (fnName === "rpc_generate_username") return json(res, 200, { data: await generateUsername(params, token) });
     if (fnName === "rpc_hash_staff_password") return json(res, 200, { data: await hashStaffPasswordRequest(params) });
-    if (fnName === "rpc_get_privileged_defaults") return json(res, 200, { data: privilegedDefaults() });
+    if (fnName === "rpc_migrate_privileged_defaults") return json(res, 200, { data: await migratePrivilegedDefaults(params, token) });
     if (fnName === "rpc_table_upsert" && params.p_table === "users") params.p_data = await validateUserUpsert(params, token);
     const data = await supabaseRpc(fnName, params);
-    return json(res, 200, { data });
+    const safeData = params.p_table === "users" ? redactCredentialMaterial(data) : data;
+    return json(res, 200, { data: safeData });
   } catch (error) {
     const decision = { allowed: false, reason: "upstream_rejected" };
     auditSink(auditEvent({ request: req, context, action: fnName, target: params.p_table || null, decision, metadata: { status: error.status || 502 } }));

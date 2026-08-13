@@ -17,15 +17,15 @@ export const ROLE_PERMISSIONS = Object.freeze({
 
 export const DEVELOPER_TABLES = new Set(["devSmsConfig", "security_audit_log"]);
 export const AUTHORIZATION_TABLES = new Set(["users", "userRoles", "roles", "permissions", "tenantScopes"]);
-export const ADMINISTRATOR_ONLY_RPCS = new Set(["rpc_generate_username", "rpc_hash_staff_password", "rpc_get_privileged_defaults"]);
+export const ADMINISTRATOR_ONLY_RPCS = new Set(["rpc_generate_username", "rpc_hash_staff_password", "rpc_migrate_privileged_defaults"]);
 
 export const RPC_POLICY = Object.freeze({
-  rpc_get_login_material: { public: true },
+  rpc_verify_login: { public: true },
   rpc_record_login_attempt: { public: true },
   rpc_create_session: { public: true },
   rpc_generate_username: { permission: "admin:write" },
   rpc_hash_staff_password: { permission: "admin:write" },
-  rpc_get_privileged_defaults: { permission: "admin:write" },
+  rpc_migrate_privileged_defaults: { permission: "admin:write" },
   rpc_logout: { permission: "data:read" },
   rpc_table_select_all: { permission: "data:read" },
   rpc_table_select_one: { permission: "data:read" },
@@ -77,7 +77,8 @@ export function authorizeRpc(context, fnName, params = {}) {
   if (params.p_data && typeof params.p_data === "object" && ("role" in params.p_data || "permissions" in params.p_data || "tenantId" in params.p_data || "branchId" in params.p_data || (table === "users" && ("username" in params.p_data || "fullName" in params.p_data)))) {
     return authorize(context, { permission: "admin:write" });
   }
-  return authorize(context, { permission: RPC_POLICY[fnName]?.permission });
+  if (!RPC_POLICY[fnName]) return { allowed: false, status: 403, reason: "rpc_not_allowed" };
+  return authorize(context, { permission: RPC_POLICY[fnName].permission });
 }
 
 export function auditEvent({ request, context, action, target, decision, metadata = {} }) {

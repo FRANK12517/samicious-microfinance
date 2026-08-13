@@ -19,13 +19,14 @@ test("denies ordinary users developer-only table access", () => {
   assert.equal(authorizeRpc(user, "rpc_table_upsert", { p_table: "users", p_data: { role: "Administrator" } }).allowed, false);
 });
 
-test("only administrators may retrieve privileged defaults", () => {
+test("only administrators may migrate privileged defaults", () => {
   const admin = { username: "adugyamfi", role: "Administrator", active: true };
   const developer = { username: "frank", role: "Developer", active: true };
   const staff = { username: "staff", role: "Teller", active: true };
-  assert.equal(authorizeRpc(admin, "rpc_get_privileged_defaults", {}).allowed, true);
-  assert.equal(authorizeRpc(developer, "rpc_get_privileged_defaults", {}).allowed, false);
-  assert.equal(authorizeRpc(staff, "rpc_get_privileged_defaults", {}).allowed, false);
+  assert.equal(authorizeRpc(admin, "rpc_migrate_privileged_defaults", {}).allowed, true);
+  assert.equal(authorizeRpc(developer, "rpc_migrate_privileged_defaults", {}).allowed, false);
+  assert.equal(authorizeRpc(staff, "rpc_migrate_privileged_defaults", {}).allowed, false);
+  assert.equal(authorizeRpc(admin, "rpc_get_privileged_defaults", {}).allowed, false);
 });
 
 test("only administrators may generate usernames", () => {
@@ -75,10 +76,30 @@ test("staff lifecycle controls preserve revocation and session invalidation mark
   assert.equal(source.includes("passwordRevoked=true"), true);
 });
 
+test("credential hardening keeps hashes server-side and redacts normal user responses", () => {
+  const frontend = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const server = fs.readFileSync(new URL("../server/index.mjs", import.meta.url), "utf8");
+  assert.equal(frontend.includes("rpc_get_login_material"), false);
+  assert.equal(frontend.includes("credentialMaterial"), true);
+  assert.equal(server.includes("redactCredentialMaterial"), true);
+  assert.equal(server.includes("rpc_verify_login"), true);
+  assert.equal(server.includes("passwordHash"), true);
+  assert.equal(server.includes("return { ok: true, username: material.username"), true);
+});
+
 test("frontend source contains no required plaintext privileged passwords", () => {
   const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.equal(source.includes("@Adu200"), false);
   assert.equal(source.includes("#Fran200"), false);
+});
+
+test("credential audit fields do not include plaintext password fields", () => {
+  const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.equal(source.includes("passwordChanged"), true);
+  assert.equal(source.includes("p_password"), true);
+  assert.equal(/(?:^|[,{\s])password\s*:\s*(?:[A-Za-z0-9_$]|["'])/.test(source), false);
+  assert.equal(source.includes("localStorage.setItem(\"passwordHash\""), false);
+  assert.equal(source.includes("sessionStorage.setItem(\"passwordHash\""), false);
 });
 
 test("redacts sensitive audit metadata", () => {
