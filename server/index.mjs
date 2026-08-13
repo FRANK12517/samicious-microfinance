@@ -1,4 +1,5 @@
 import http from "node:http";
+import { pbkdf2Sync, randomBytes } from "node:crypto";
 import { authorizeRpc, auditEvent, RPC_POLICY, safeAuditEvent } from "./authz.mjs";
 
 const PORT = Number(process.env.PORT || 8787);
@@ -37,6 +38,30 @@ async function supabaseRpc(name, params) {
   return payload;
 }
 
+const STAFF_PASSWORD_ITERATIONS = 150000;
+const STAFF_PASSWORD_SYMBOLS = "@#$%^&*()";
+
+function staffPasswordPrefix(fullName) {
+  const letters = String(fullName || "").normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").match(/[A-Za-z]/g) || [];
+  if (letters.length < 3) return "";
+  return letters.slice(0, 3).join("").replace(/^([A-Za-z])([A-Za-z])([A-Za-z])$/, (_, first, second, third) => first.toUpperCase() + second.toLowerCase() + third.toLowerCase());
+}
+
+function validateStaffPassword(password, fullName) {
+  const value = String(password || "");
+  const prefix = staffPasswordPrefix(fullName);
+  if (!prefix) return { ok: false, message: "Full Name must contain at least three alphabetic characters" };
+  if (value.length !== 7) return { ok: false, message: "Staff passwords must contain exactly 7 characters" };
+  if (!STAFF_PASSWORD_SYMBOLS.includes(value[0]) || value.slice(1, 4) !== prefix || !/^[0-9]{3}$/.test(value.slice(4))) return { ok: false, message: "Staff password must be symbol + name prefix + 3 digits" };
+  return { ok: true, message: "" };
+}
+
+function hashStaffPassword(password) {
+  const salt = randomBytes(16).toString("hex");
+  const hash = pbkdf2Sync(String(password), Buffer.from(salt, "hex"), STAFF_PASSWORD_ITERATIONS, 32, "sha256").toString("hex");
+  return { passwordHash: hash, passwordSalt: salt, passwordIterations: STAFF_PASSWORD_ITERATIONS, passwordAlgo: "PBKDF2-SHA256", passwordSetAt: new Date().toISOString() };
+}
+
 function normalizeUsername(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -55,6 +80,7 @@ async function validateUserUpsert(params, token) {
   const username = normalizeUsername(data.username);
   if (!username || !/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(username)) throw Object.assign(new Error("invalid_username"), { status: 400 });
   if (data.username !== username) throw Object.assign(new Error("username_must_be_lowercase"), { status: 400 });
+  if (typeof data.password === "string" && data.password.length > 0) throw Object.assign(new Error("plaintext_password_not_allowed"), { status: 400 });
   const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "users" });
   const existing = (Array.isArray(rows) ? rows : []).find((row) => String(row.id || "") === String(data.id || "") || normalizeUsername(row.username) === username);
   if (!String(data.fullName || "").trim() && !existing) throw Object.assign(new Error("full_name_required"), { status: 400 });
@@ -67,6 +93,14 @@ async function validateUserUpsert(params, token) {
   });
   if (duplicate) throw Object.assign(new Error("username_already_taken"), { status: 409 });
   return Object.assign({}, data, { username });
+}
+
+async function hashStaffPasswordRequest(params) {
+  const password = String(params?.p_password || "");
+  const fullName = String(params?.p_full_name || "");
+  const validation = validateStaffPassword(password, fullName);
+  if (!validation.ok) throw Object.assign(new Error(validation.message), { status: 400 });
+  return hashStaffPassword(password);
 }
 
 async function generateUsername(params, token) {
@@ -124,6 +158,7 @@ async function handle(req, res) {
   if (!policy.public) params.p_token = token;
   try {
     if (fnName === "rpc_generate_username") return json(res, 200, { data: await generateUsername(params, token) });
+    if (fnName === "rpc_hash_staff_password") return json(res, 200, { data: await hashStaffPasswordRequest(params) });
     if (fnName === "rpc_table_upsert" && params.p_table === "users") params.p_data = await validateUserUpsert(params, token);
     const data = await supabaseRpc(fnName, params);
     return json(res, 200, { data });
