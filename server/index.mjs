@@ -319,6 +319,10 @@ async function handle(req, res) {
   }
 }
 
-http.createServer((req, res) => handle(req, res).catch((error) => json(res, error.status || 500, { error: "internal_error" }))).listen(PORT, "0.0.0.0", () => {
-  console.log(`SAMICIOUS security gateway listening on ${PORT}`);
-});
+export { handle };
+
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_VERSION) {
+  http.createServer((req, res) => handle(req, res).catch((error) => json(res, error.status || 500, { error: "internal_error" }))).listen(PORT, "0.0.0.0", () => {
+    console.log(`SAMICIOUS security gateway listening on ${PORT}`);
+  });
+}
