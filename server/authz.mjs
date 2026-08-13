@@ -17,6 +17,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
 
 export const DEVELOPER_TABLES = new Set(["devSmsConfig", "security_audit_log"]);
 export const AUTHORIZATION_TABLES = new Set(["users", "userRoles", "roles", "permissions", "tenantScopes"]);
+export const ADMINISTRATOR_ONLY_RPCS = new Set(["rpc_generate_username", "rpc_hash_staff_password", "rpc_get_privileged_defaults"]);
 
 export const RPC_POLICY = Object.freeze({
   rpc_get_login_material: { public: true },
@@ -61,8 +62,17 @@ export function authorize(context, { permission, scope } = {}) {
 
 export function authorizeRpc(context, fnName, params = {}) {
   const table = String(params.p_table || "");
+  if (ADMINISTRATOR_ONLY_RPCS.has(fnName)) {
+    const base = authorize(context, { permission: "admin:write" });
+    if (!base.allowed) return base;
+    return normalizeRole(context.role) === "Administrator" ? base : { allowed: false, status: 403, reason: "administrator_required" };
+  }
   if (DEVELOPER_TABLES.has(table)) return authorize(context, { permission: "developer:write" });
-  if (AUTHORIZATION_TABLES.has(table)) return authorize(context, { permission: "admin:write" });
+  if (AUTHORIZATION_TABLES.has(table)) {
+    const base = authorize(context, { permission: "admin:write" });
+    if (table === "users" && base.allowed && normalizeRole(context.role) !== "Administrator") return { allowed: false, status: 403, reason: "administrator_required" };
+    return base;
+  }
   if (fnName === "rpc_table_clear") return authorize(context, { permission: "admin:write" });
   if (params.p_data && typeof params.p_data === "object" && ("role" in params.p_data || "permissions" in params.p_data || "tenantId" in params.p_data || "branchId" in params.p_data || (table === "users" && ("username" in params.p_data || "fullName" in params.p_data)))) {
     return authorize(context, { permission: "admin:write" });

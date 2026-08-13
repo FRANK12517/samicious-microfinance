@@ -24,7 +24,7 @@ test("only administrators may retrieve privileged defaults", () => {
   const developer = { username: "frank", role: "Developer", active: true };
   const staff = { username: "staff", role: "Teller", active: true };
   assert.equal(authorizeRpc(admin, "rpc_get_privileged_defaults", {}).allowed, true);
-  assert.equal(authorizeRpc(developer, "rpc_get_privileged_defaults", {}).allowed, true);
+  assert.equal(authorizeRpc(developer, "rpc_get_privileged_defaults", {}).allowed, false);
   assert.equal(authorizeRpc(staff, "rpc_get_privileged_defaults", {}).allowed, false);
 });
 
@@ -49,6 +49,30 @@ test("rejects cross-branch access", () => {
   const user = { username: "staff", role: "Teller", active: true, branchId: "b1" };
   assert.equal(isWithinScope(user, { branchId: "b2" }), false);
   assert.equal(authorize(user, { permission: "data:read", scope: { branchId: "b2" } }).reason, "scope_violation");
+});
+
+test("revoked staff sessions are denied by backend authorization", () => {
+  const revoked = { username: "enest", role: "Teller", active: true, usernameRevoked: true };
+  const passwordRevoked = { username: "ama", role: "Teller", active: true, passwordRevoked: true };
+  assert.equal(authorize(revoked, { permission: "data:read" }).allowed, false);
+  assert.equal(authorize(passwordRevoked, { permission: "data:read" }).allowed, false);
+});
+
+test("only Administrator may mutate the users table", () => {
+  const developer = { username: "frank", role: "Developer", active: true };
+  const staff = { username: "staff", role: "Teller", active: true };
+  assert.equal(authorizeRpc(developer, "rpc_table_upsert", { p_table: "users", p_data: { username: "staff" } }).allowed, false);
+  assert.equal(authorizeRpc(staff, "rpc_table_upsert", { p_table: "users", p_data: { username: "staff" } }).allowed, false);
+});
+
+test("staff lifecycle controls preserve revocation and session invalidation markers", () => {
+  const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.equal(source.includes("Revoke Access"), true);
+  assert.equal(source.includes("Reset Password"), true);
+  assert.equal(source.includes("Reactivate"), true);
+  assert.equal(source.includes("sessionEpoch=(Number(target.sessionEpoch)||0)+1"), true);
+  assert.equal(source.includes("usernameRevoked=true"), true);
+  assert.equal(source.includes("passwordRevoked=true"), true);
 });
 
 test("frontend source contains no required plaintext privileged passwords", () => {
