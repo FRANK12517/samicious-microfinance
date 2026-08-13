@@ -24,6 +24,7 @@ export const RPC_POLICY = Object.freeze({
   rpc_create_session: { public: true },
   rpc_generate_username: { permission: "admin:write" },
   rpc_hash_staff_password: { permission: "admin:write" },
+  rpc_get_privileged_defaults: { permission: "admin:write" },
   rpc_logout: { permission: "data:read" },
   rpc_table_select_all: { permission: "data:read" },
   rpc_table_select_one: { permission: "data:read" },

@@ -40,6 +40,11 @@ async function supabaseRpc(name, params) {
 
 const STAFF_PASSWORD_ITERATIONS = 150000;
 const STAFF_PASSWORD_SYMBOLS = "@#$%^&*()";
+const PRIVILEGED_DEFAULTS_VERSION = "2026-08-privileged-defaults-v1";
+const PRIVILEGED_DEFAULTS = Object.freeze({
+  administrator: Object.freeze({ username: "adugyamfi", displayName: "ADUGYAMFI", fullName: "Adugyamfi", role: "Administrator", passwordHash: "ef554534c1e3da33ac5d79f62346d43d661bcc846ae733aebb7f6326f3ed0261", passwordSalt: "e2b3ae184c3792b4ad07449b4435f820", passwordIterations: 150000, passwordAlgo: "PBKDF2-SHA256" }),
+  developer: Object.freeze({ username: "frank", displayName: "FRANK", fullName: "Frank", role: "Developer", passwordHash: "65b368196ebe7f7bfd23fa359196c626e0e52df33ff562acffadb1eea78607b2", passwordSalt: "47988073b26e91eb07d2d7a0ca7d46b3", passwordIterations: 150000, passwordAlgo: "PBKDF2-SHA256" })
+});
 
 function staffPasswordPrefix(fullName) {
   const letters = String(fullName || "").match(/[A-Za-z]/g) || [];
@@ -93,6 +98,10 @@ async function validateUserUpsert(params, token) {
   });
   if (duplicate) throw Object.assign(new Error("username_already_taken"), { status: 409 });
   return Object.assign({}, data, { username });
+}
+
+function privilegedDefaults() {
+  return { version: PRIVILEGED_DEFAULTS_VERSION, accounts: PRIVILEGED_DEFAULTS };
 }
 
 async function hashStaffPasswordRequest(params) {
@@ -159,6 +168,7 @@ async function handle(req, res) {
   try {
     if (fnName === "rpc_generate_username") return json(res, 200, { data: await generateUsername(params, token) });
     if (fnName === "rpc_hash_staff_password") return json(res, 200, { data: await hashStaffPasswordRequest(params) });
+    if (fnName === "rpc_get_privileged_defaults") return json(res, 200, { data: privilegedDefaults() });
     if (fnName === "rpc_table_upsert" && params.p_table === "users") params.p_data = await validateUserUpsert(params, token);
     const data = await supabaseRpc(fnName, params);
     return json(res, 200, { data });
