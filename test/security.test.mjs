@@ -69,6 +69,13 @@ test("Settings capabilities use the authenticated backend role", () => {
   assert.equal(source.includes("const role=String(context?.role||\"\");"), true);
 });
 
+test("Troubleshooting Engine covers required problems and safe diagnostic flow", () => {
+  const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  for (const problem of ["I cannot log in","My password is not working","I cannot find a customer","A transaction failed","A transaction did not save","The balance is incorrect","A loan is not showing","A repayment is missing","The application is offline","Data is not synchronizing","I cannot access a feature","I cannot print a receipt","A report is incorrect","Cash does not balance","I cannot complete End-of-Day","The application is slow"]) assert.equal(source.includes(problem), true);
+  for (const feature of ["function renderTroubleshootingEngine(root,initialQuery=\"\")","safeTroubleDiagnostics","PROBLEM","CHECK","USER ACTION","SUCCESS?","ESCALATE","#copyTroubleDiagnostics","navigator.clipboard","transactionReference","applicationVersion","connectivity"]) assert.equal(source.includes(feature), true);
+  for (const secret of ["p_password","passwordHash","apiKey","accessToken","JWT_SECRET"]) assert.equal(source.includes('diag.'+secret), false);
+});
+
 test("Help Center is interactive, searchable, role-aware, and module-grounded", () => {
   const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   for (const category of ["Getting Started","My Role Runbook","Frequently Asked Questions","Troubleshooting","Module Guides","Security & Account Help","Contact / Escalation Support"]) assert.equal(source.includes(category), true);
