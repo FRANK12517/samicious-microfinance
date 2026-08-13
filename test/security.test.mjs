@@ -69,6 +69,13 @@ test("Settings capabilities use the authenticated backend role", () => {
   assert.equal(source.includes("const role=String(context?.role||\"\");"), true);
 });
 
+test("Help Center is interactive, searchable, role-aware, and module-grounded", () => {
+  const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  for (const category of ["Getting Started","My Role Runbook","Frequently Asked Questions","Troubleshooting","Module Guides","Security & Account Help","Contact / Escalation Support"]) assert.equal(source.includes(category), true);
+  for (const feature of ["function renderHelpCenter(root)","id=\"helpSearch\"","id=\"helpCategory\"","help-accordion","helpRoleRunbooks(role)","allowedPages()","Contact / Escalation Support","Escalate"] ) assert.equal(source.includes(feature), true);
+  for (const task of ["Log in securely","Navigate the dashboard and sidebar","Search and manage customer accounts","Process savings transactions","Manage loans and repayments","Record collections and cash handover","Manage cash, tills, vaults, and EOD","Run reports and review notifications"]) assert.equal(source.includes(task), true);
+});
+
 test("centralized Settings route and categories are present", () => {
   const source = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.equal(source.includes('id:"settings",label:"Settings"'), true);
