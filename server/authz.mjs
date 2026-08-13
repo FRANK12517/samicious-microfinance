@@ -22,6 +22,7 @@ export const RPC_POLICY = Object.freeze({
   rpc_get_login_material: { public: true },
   rpc_record_login_attempt: { public: true },
   rpc_create_session: { public: true },
+  rpc_generate_username: { permission: "admin:write" },
   rpc_logout: { permission: "data:read" },
   rpc_table_select_all: { permission: "data:read" },
   rpc_table_select_one: { permission: "data:read" },
@@ -61,7 +62,7 @@ export function authorizeRpc(context, fnName, params = {}) {
   if (DEVELOPER_TABLES.has(table)) return authorize(context, { permission: "developer:write" });
   if (AUTHORIZATION_TABLES.has(table)) return authorize(context, { permission: "admin:write" });
   if (fnName === "rpc_table_clear") return authorize(context, { permission: "admin:write" });
-  if (params.p_data && typeof params.p_data === "object" && ("role" in params.p_data || "permissions" in params.p_data || "tenantId" in params.p_data || "branchId" in params.p_data)) {
+  if (params.p_data && typeof params.p_data === "object" && ("role" in params.p_data || "permissions" in params.p_data || "tenantId" in params.p_data || "branchId" in params.p_data || (table === "users" && ("username" in params.p_data || "fullName" in params.p_data)))) {
     return authorize(context, { permission: "admin:write" });
   }
   return authorize(context, { permission: RPC_POLICY[fnName]?.permission });

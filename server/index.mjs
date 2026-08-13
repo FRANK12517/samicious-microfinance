@@ -37,6 +37,53 @@ async function supabaseRpc(name, params) {
   return payload;
 }
 
+function normalizeUsername(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function usernameCandidates(fullName) {
+  const words = String(fullName || "").trim().toLowerCase().normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").split(/[^a-z0-9]+/).filter(Boolean);
+  if (!words.length) return [];
+  const first = words[0];
+  const surname = words.length > 1 ? words[words.length - 1] : "";
+  return [...new Set([first, surname, first + surname].filter(Boolean))];
+}
+
+async function validateUserUpsert(params, token) {
+  const data = params?.p_data;
+  if (!data || typeof data !== "object") throw Object.assign(new Error("invalid_user_record"), { status: 400 });
+  const username = normalizeUsername(data.username);
+  if (!username || !/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(username)) throw Object.assign(new Error("invalid_username"), { status: 400 });
+  if (data.username !== username) throw Object.assign(new Error("username_must_be_lowercase"), { status: 400 });
+  const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "users" });
+  const existing = (Array.isArray(rows) ? rows : []).find((row) => String(row.id || "") === String(data.id || "") || normalizeUsername(row.username) === username);
+  if (!String(data.fullName || "").trim() && !existing) throw Object.assign(new Error("full_name_required"), { status: 400 });
+  const duplicate = (Array.isArray(rows) ? rows : []).find((row) => {
+    if (normalizeUsername(row.username) !== username) return false;
+    const sameRecord = String(row.id || "") && String(data.id || "")
+      ? String(row.id) === String(data.id)
+      : String(row.username) === String(data.username);
+    return !sameRecord;
+  });
+  if (duplicate) throw Object.assign(new Error("username_already_taken"), { status: 409 });
+  return Object.assign({}, data, { username });
+}
+
+async function generateUsername(params, token) {
+  const fullName = String(params?.p_full_name || "").trim();
+  if (!fullName) throw Object.assign(new Error("full_name_required"), { status: 400 });
+  const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "users" });
+  const used = new Set((Array.isArray(rows) ? rows : []).map((row) => normalizeUsername(row.username)).filter(Boolean));
+  const candidates = usernameCandidates(fullName);
+  for (const candidate of candidates) if (!used.has(candidate)) return { username: candidate };
+  const base = candidates[0] || "staff";
+  for (let n = 2; n < 10000; n++) {
+    const candidate = base + n;
+    if (!used.has(candidate)) return { username: candidate };
+  }
+  throw Object.assign(new Error("unable_to_generate_username"), { status: 409 });
+}
+
 function bearer(req) {
   const value = String(req.headers.authorization || "");
   return /^Bearer\s+([^\s]+)$/i.exec(value)?.[1] || null;
@@ -76,6 +123,8 @@ async function handle(req, res) {
   delete params.p_token;
   if (!policy.public) params.p_token = token;
   try {
+    if (fnName === "rpc_generate_username") return json(res, 200, { data: await generateUsername(params, token) });
+    if (fnName === "rpc_table_upsert" && params.p_table === "users") params.p_data = await validateUserUpsert(params, token);
     const data = await supabaseRpc(fnName, params);
     return json(res, 200, { data });
   } catch (error) {

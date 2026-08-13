@@ -18,6 +18,18 @@ test("denies ordinary users developer-only table access", () => {
   assert.equal(authorizeRpc(user, "rpc_table_upsert", { p_table: "users", p_data: { role: "Administrator" } }).allowed, false);
 });
 
+test("only administrators may generate usernames", () => {
+  const admin = { username: "admin", role: "Administrator", active: true };
+  const staff = { username: "staff", role: "Teller", active: true };
+  assert.equal(authorizeRpc(admin, "rpc_generate_username", {}).allowed, true);
+  assert.equal(authorizeRpc(staff, "rpc_generate_username", {}).allowed, false);
+});
+
+test("staff identity fields require administrator authorization", () => {
+  const staff = { username: "staff", role: "Teller", active: true };
+  assert.equal(authorizeRpc(staff, "rpc_table_upsert", { p_table: "users", p_data: { username: "newuser", fullName: "New User" } }).allowed, false);
+});
+
 test("allows administrator developer access", () => {
   const admin = { username: "admin", role: "Administrator", active: true };
   assert.equal(authorize(admin, { permission: "developer:write" }).allowed, true);
