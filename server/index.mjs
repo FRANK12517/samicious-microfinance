@@ -3,12 +3,12 @@ import { pbkdf2Sync, randomBytes } from "node:crypto";
 import { authorizeRpc, auditEvent, RPC_POLICY, safeAuditEvent } from "./authz.mjs";
 
 const PORT = Number(process.env.PORT || 8787);
-const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 const MAX_BODY_BYTES = 256 * 1024;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn("Security gateway requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY server-side. No privileged key is bundled in the frontend.");
+  console.warn("Security gateway requires a server-side Supabase URL and SUPABASE_SERVICE_ROLE_KEY/SUPABASE_SERVICE_KEY. No privileged key is bundled in the frontend.");
 }
 
 const auditSink = (event) => console.info(`[audit] ${safeAuditEvent(event)}`);
@@ -313,9 +313,11 @@ async function handle(req, res) {
     const safeData = params.p_table === "users" ? redactCredentialMaterial(data) : data;
     return json(res, 200, { data: safeData });
   } catch (error) {
-    const decision = { allowed: false, reason: "upstream_rejected" };
-    auditSink(auditEvent({ request: req, context, action: fnName, target: params.p_table || null, decision, metadata: { status: error.status || 502 } }));
-    return json(res, error.status || 502, { error: "request_rejected" });
+    const status = error.status || 502;
+    const reason = status === 503 ? "backend_not_configured" : "upstream_rejected";
+    const decision = { allowed: false, reason };
+    auditSink(auditEvent({ request: req, context, action: fnName, target: params.p_table || null, decision, metadata: { status } }));
+    return json(res, status, { error: reason });
   }
 }
 

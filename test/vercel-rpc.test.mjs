@@ -29,3 +29,18 @@ test("Vercel /api/rpc adapter exposes the gateway health endpoint", async () => 
   assert.deepEqual(JSON.parse(res.body), { ok: true });
   assert.equal(res.headers["cache-control"], "no-store");
 });
+
+test("gateway reports missing Supabase configuration safely", async () => {
+  const req = {
+    method: "POST",
+    url: "/api/rpc",
+    headers: {},
+    async *[Symbol.asyncIterator]() {
+      yield Buffer.from(JSON.stringify({ fnName: "rpc_verify_login", params: { p_username: "test", p_password: "not-a-real-password" } }));
+    },
+  };
+  const res = responseCapture();
+  await rpc(req, res);
+  assert.equal(res.statusCode, 503);
+  assert.deepEqual(JSON.parse(res.body), { error: "backend_not_configured" });
+});
