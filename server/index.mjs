@@ -265,7 +265,9 @@ function bearer(req) {
 async function sessionContext(req) {
   const token = bearer(req);
   if (!token) return null;
-  return await supabaseRpc("rpc_get_session_context", { p_token: token });
+  const rows = await supabaseRpc("rpc_get_session_context", { p_token: token });
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  return row || null;
 }
 
 function json(res, status, value) {
