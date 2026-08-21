@@ -40,10 +40,10 @@ async function supabaseRpc(name, params) {
 
 const STAFF_PASSWORD_ITERATIONS = 150000;
 const STAFF_PASSWORD_SYMBOLS = "@#$%^&*()";
-const PRIVILEGED_DEFAULTS_VERSION = "2026-08-privileged-defaults-v1";
+const PRIVILEGED_DEFAULTS_VERSION = "2026-08-privileged-defaults-v2";
 const PRIVILEGED_DEFAULTS = Object.freeze({
   administrator: Object.freeze({ username: "adugyamfi", displayName: "ADUGYAMFI", fullName: "Adugyamfi", role: "Administrator", passwordHash: "ef554534c1e3da33ac5d79f62346d43d661bcc846ae733aebb7f6326f3ed0261", passwordSalt: "e2b3ae184c3792b4ad07449b4435f820", passwordIterations: 150000, passwordAlgo: "PBKDF2-SHA256" }),
-  developer: Object.freeze({ username: "frank", displayName: "FRANK", fullName: "Frank", role: "Developer", passwordHash: "65b368196ebe7f7bfd23fa359196c626e0e52df33ff562acffadb1eea78607b2", passwordSalt: "47988073b26e91eb07d2d7a0ca7d46b3", passwordIterations: 150000, passwordAlgo: "PBKDF2-SHA256" })
+  developer: Object.freeze({ username: "frank", displayName: "FRANK", fullName: "Frank", role: "Developer", passwordHash: "d36ce14e591a9b98541cbe22b090206a7cdbf4df91c3fc5af01512ff6a7eccb3", passwordSalt: "47988073b26e91eb07d2d7a0ca7d46b3", passwordIterations: 150000, passwordAlgo: "PBKDF2-SHA256" })
 });
 
 function staffPasswordPrefix(fullName) {
