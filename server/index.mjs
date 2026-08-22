@@ -359,6 +359,17 @@ function json(res, status, value) {
   res.end(JSON.stringify(value));
 }
 
+const BRANCH_SCOPED_READ_TABLES = new Set(["users","branches","transactions","loanRepayments","loans","accounts","customers","eodReconciliations","cashHandovers","tellerTillClosings","notifications","activityLog","adminTxnNotifications"]);
+function applyBranchManagerReadScope(data, table, context) {
+  if (String(context?.role || "") !== "Branch Manager" || !BRANCH_SCOPED_READ_TABLES.has(table)) return data;
+  const raw = context?.authorizedBranchIds || context?.branchIds || context?.authorizedBranches;
+  const ids = new Set((Array.isArray(raw) ? raw.map(x => typeof x === "object" ? x.id : x) : []).filter(Boolean).map(String));
+  if (context?.branchId) ids.add(String(context.branchId));
+  const scoped = (row) => row && (table === "branches" ? ids.has(String(row.id)) : row.branchId != null && ids.has(String(row.branchId)));
+  if (Array.isArray(data)) return data.filter(scoped);
+  return scoped(data) ? data : null;
+}
+
 async function handle(req, res) {
   if (req.method === "GET" && req.url === "/healthz") return json(res, 200, { ok: true });
   if (req.method !== "POST" || req.url !== "/api/rpc") return json(res, 404, { error: "not_found" });
@@ -415,7 +426,8 @@ async function handle(req, res) {
     } else {
       data = await supabaseRpc(fnName, params);
     }
-    const safeData = params.p_table === "users" ? redactCredentialMaterial(data) : data;
+    const scopedData = ["rpc_table_select_all","rpc_table_select_one","rpc_table_select_by"].includes(fnName) ? applyBranchManagerReadScope(data, params.p_table, context) : data;
+    const safeData = params.p_table === "users" ? redactCredentialMaterial(scopedData) : scopedData;
     return json(res, 200, { data: safeData });
   } catch (error) {
     const status = error.status || 502;

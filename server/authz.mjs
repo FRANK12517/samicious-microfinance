@@ -62,7 +62,16 @@ export function isWithinScope(context, requestedScope) {
   if (!requestedScope || !context) return false;
   if (normalizeRole(context.role) === "Administrator" || normalizeRole(context.role) === "Developer") return true;
   const allowed = ["branchId", "tenantId", "organizationId", "schoolId", "districtId", "regionId"];
-  return allowed.every((key) => requestedScope[key] == null || context[key] == null || String(requestedScope[key]) === String(context[key]));
+  return allowed.every((key) => {
+    if (requestedScope[key] == null || context[key] == null) return true;
+    if (key === "branchId") {
+      const raw = context.authorizedBranchIds || context.branchIds || context.authorizedBranches;
+      const ids = Array.isArray(raw) ? raw.map((value) => typeof value === "object" ? value.id : value).filter(Boolean).map(String) : [];
+      if (context.branchId != null) ids.push(String(context.branchId));
+      return ids.length ? ids.includes(String(requestedScope[key])) : String(requestedScope[key]) === String(context[key]);
+    }
+    return String(requestedScope[key]) === String(context[key]);
+  });
 }
 
 export function authorize(context, { permission, scope } = {}) {
@@ -90,7 +99,7 @@ export function authorizeRpc(context, fnName, params = {}) {
   if (SUPPORT_MANAGEMENT_TABLES.has(table)) return { allowed: false, status: 403, reason: "use_protected_support_endpoint" };
   if (EOD_SCOPED_TABLES.has(table)) {
     const finalTillStage = String(params?.p_data?.workflowStage || "");
-    if (EOD_FINAL_APPROVAL_TABLES.has(table) || (table === "tellerTillClosings" && ["ceo_approved", "ceo_rejected"].includes(finalTillStage))) {
+    if (EOD_FINAL_APPROVAL_TABLES.has(table) || (table === "tellerTillClosings" && ["ceo_approved", "ceo_rejected"].includes(finalTillStage)) || (table === "eodReconciliations" && ["CLOSED", "REJECTED BY ADMINISTRATOR/CEO", "RETURNED FOR CORRECTION"].includes(String(params?.p_data?.submissionStatus || "")))) {
       if (normalizeRole(context?.role) !== "Administrator") return { allowed: false, status: 403, reason: "administrator_required" };
     }
     const branchId = params?.p_data?.branchId;
