@@ -19,6 +19,8 @@ export const DEVELOPER_TABLES = new Set(["devSmsConfig", "security_audit_log"]);
 export const AUTHORIZATION_TABLES = new Set(["users", "userRoles", "roles", "permissions", "tenantScopes"]);
 export const ADMINISTRATOR_ONLY_RPCS = new Set(["rpc_generate_username", "rpc_hash_staff_password", "rpc_migrate_privileged_defaults", "rpc_help_content_save", "rpc_help_content_delete", "rpc_support_report_list"]);
 export const SUPPORT_MANAGEMENT_TABLES = new Set(["helpContent", "supportReports"]);
+export const EOD_SCOPED_TABLES = new Set(["eodReconciliations", "cashHandovers", "channelReconciliations", "journalVouchers", "eodDayClosures", "systemEodRuns", "loanInterestAccruals", "savingsInterestAccruals", "savingsInterestPostings", "dailyReports"]);
+export const EOD_FINAL_APPROVAL_TABLES = new Set(["eodDayClosures", "systemEodRuns"]);
 
 export const RPC_POLICY = Object.freeze({
   rpc_verify_login: { public: true },
@@ -84,6 +86,11 @@ export function authorizeRpc(context, fnName, params = {}) {
     return normalizeRole(context.role) === "Administrator" ? base : { allowed: false, status: 403, reason: "administrator_required" };
   }
   if (SUPPORT_MANAGEMENT_TABLES.has(table)) return { allowed: false, status: 403, reason: "use_protected_support_endpoint" };
+  if (EOD_SCOPED_TABLES.has(table)) {
+    if (EOD_FINAL_APPROVAL_TABLES.has(table) && normalizeRole(context?.role) !== "Administrator") return { allowed: false, status: 403, reason: "administrator_required" };
+    const branchId = params?.p_data?.branchId;
+    return authorize(context, { permission: "data:write", scope: branchId ? { branchId } : undefined });
+  }
   if (DEVELOPER_TABLES.has(table)) return authorize(context, { permission: "developer:write" });
   if (AUTHORIZATION_TABLES.has(table)) {
     const base = authorize(context, { permission: "admin:write" });
