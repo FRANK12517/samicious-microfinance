@@ -167,13 +167,13 @@ async function assertTellerEodMutationAllowed(params, token, context) {
   const table = String(params?.p_table || "");
   const data = params?.p_data && typeof params.p_data === "object" ? params.p_data : {};
   if (!TELLER_LOCKED_TRANSACTION_TABLES.has(table) && !COLLECTOR_LOCKED_TRANSACTION_TABLES.has(table) && !["tellerTillClosings","eodReconciliations"].includes(table)) return;
-  if (String(context?.role || "") === "Administrator") return;
+  const isAdministrator = String(context?.role || "") === "Administrator";
   const collectorRoles = new Set(["Susu Collector", "Field Officer", "Loan Officer"]);
   if (table === "eodReconciliations") {
     const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "eodReconciliations" });
     const existing = (Array.isArray(rows) ? rows : []).find((row) => String(row.id || "") === String(data.id || "") || (String(row.username || "") === String(data.username || context?.username || "") && String(row.date || "") === String(data.date || "")));
     if (existing && (existing.submissionStatus === "CLOSED" || existing.status === "closed")) throw Object.assign(new Error("collector_eod_closed_immutable"), { status: 403 });
-    if (existing && collectorRoles.has(String(existing.role || "")) && String(existing.username || "") === String(context?.username || "") && existing.status !== "draft") throw Object.assign(new Error("collector_eod_submitted_locked"), { status: 403 });
+    if (!isAdministrator && existing && collectorRoles.has(String(existing.role || "")) && String(existing.username || "") === String(context?.username || "") && existing.status !== "draft") throw Object.assign(new Error("collector_eod_submitted_locked"), { status: 403 });
     return;
   }
   const tillRows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "tellerTillClosings" });
@@ -181,7 +181,7 @@ async function assertTellerEodMutationAllowed(params, token, context) {
   if (table === "tellerTillClosings") {
     const existing = rows.find((row) => String(row.id || "") === String(data.id || ""));
     if (existing && (existing.workflowStage === "manager_approved" || existing.workflowStage === "ceo_approved")) throw Object.assign(new Error("teller_eod_closed_immutable"), { status: 403 });
-    if (existing && existing.workflowStage !== "draft" && String(existing.username || "") === String(data.username || context?.username || "")) throw Object.assign(new Error("teller_eod_submitted_locked"), { status: 403 });
+    if (!isAdministrator && existing && existing.workflowStage !== "draft" && String(existing.username || "") === String(data.username || context?.username || "")) throw Object.assign(new Error("teller_eod_submitted_locked"), { status: 403 });
     return;
   }
   const actor = data.actorUserId || data.disbursedByUserId || data.receivingOfficerUserId || data.username;
@@ -189,7 +189,7 @@ async function assertTellerEodMutationAllowed(params, token, context) {
   if (!actor || !date) return;
   if (TELLER_LOCKED_TRANSACTION_TABLES.has(table)) {
     const locked = rows.find((row) => String(row.username || "") === String(actor) && String(row.date || "") === String(date) && row.workflowStage !== "draft");
-    if (locked) throw Object.assign(new Error("teller_eod_submitted_transaction_locked"), { status: 403 });
+    if (locked && (!isAdministrator || locked.workflowStage === "manager_approved" || locked.workflowStage === "ceo_approved")) throw Object.assign(new Error("teller_eod_submitted_transaction_locked"), { status: 403 });
   }
   if (COLLECTOR_LOCKED_TRANSACTION_TABLES.has(table)) {
     const eodRows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "eodReconciliations" });

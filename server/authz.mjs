@@ -101,6 +101,11 @@ export function authorizeRpc(context, fnName, params = {}) {
     const finalTillStage = String(params?.p_data?.workflowStage || "");
     if (EOD_FINAL_APPROVAL_TABLES.has(table) || (table === "tellerTillClosings" && ["ceo_approved", "ceo_rejected"].includes(finalTillStage)) || (table === "eodReconciliations" && ["CLOSED", "REJECTED BY ADMINISTRATOR/CEO", "RETURNED FOR CORRECTION"].includes(String(params?.p_data?.submissionStatus || "")))) {
       if (normalizeRole(context?.role) !== "Administrator") return { allowed: false, status: 403, reason: "administrator_required" };
+      const record = params?.p_data && typeof params.p_data === "object" ? params.p_data : {};
+      const approvingStaff = String(record.username || record.staffId || "");
+      const finalApproval = (table === "tellerTillClosings" && finalTillStage === "ceo_approved") || (table === "eodReconciliations" && String(record.submissionStatus || "") === "CLOSED");
+      const explicitHigherLevelPolicy = context?.selfApprovalAllowed === true && context?.selfApprovalPolicy === "higher_level";
+      if (finalApproval && approvingStaff && String(context?.username || context?.userId || "") === approvingStaff && !explicitHigherLevelPolicy) return { allowed: false, status: 403, reason: "self_approval_forbidden" };
     }
     const branchId = params?.p_data?.branchId;
     return authorize(context, { permission: "data:write", scope: branchId ? { branchId } : undefined });
