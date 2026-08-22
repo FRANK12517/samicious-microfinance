@@ -161,12 +161,21 @@ async function verifyLoginRequest(params) {
 }
 
 const TELLER_LOCKED_TRANSACTION_TABLES = new Set(["transactions", "loanRepayments", "loans", "cashHandovers", "vaultTransfers"]);
+const COLLECTOR_LOCKED_TRANSACTION_TABLES = new Set(["transactions", "loanRepayments", "loans"]);
 
 async function assertTellerEodMutationAllowed(params, token, context) {
   const table = String(params?.p_table || "");
   const data = params?.p_data && typeof params.p_data === "object" ? params.p_data : {};
-  if (!TELLER_LOCKED_TRANSACTION_TABLES.has(table) && table !== "tellerTillClosings") return;
+  if (!TELLER_LOCKED_TRANSACTION_TABLES.has(table) && !COLLECTOR_LOCKED_TRANSACTION_TABLES.has(table) && !["tellerTillClosings","eodReconciliations"].includes(table)) return;
   if (String(context?.role || "") === "Administrator") return;
+  const collectorRoles = new Set(["Susu Collector", "Field Officer", "Loan Officer"]);
+  if (table === "eodReconciliations") {
+    const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "eodReconciliations" });
+    const existing = (Array.isArray(rows) ? rows : []).find((row) => String(row.id || "") === String(data.id || "") || (String(row.username || "") === String(data.username || context?.username || "") && String(row.date || "") === String(data.date || "")));
+    if (existing && (existing.submissionStatus === "CLOSED" || existing.status === "closed")) throw Object.assign(new Error("collector_eod_closed_immutable"), { status: 403 });
+    if (existing && collectorRoles.has(String(existing.role || "")) && String(existing.username || "") === String(context?.username || "") && existing.status !== "draft") throw Object.assign(new Error("collector_eod_submitted_locked"), { status: 403 });
+    return;
+  }
   const tillRows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "tellerTillClosings" });
   const rows = Array.isArray(tillRows) ? tillRows : [];
   if (table === "tellerTillClosings") {
@@ -178,8 +187,15 @@ async function assertTellerEodMutationAllowed(params, token, context) {
   const actor = data.actorUserId || data.disbursedByUserId || data.receivingOfficerUserId || data.username;
   const date = data.date || data.transactionDate;
   if (!actor || !date) return;
-  const locked = rows.find((row) => String(row.username || "") === String(actor) && String(row.date || "") === String(date) && row.workflowStage !== "draft");
-  if (locked) throw Object.assign(new Error("teller_eod_submitted_transaction_locked"), { status: 403 });
+  if (TELLER_LOCKED_TRANSACTION_TABLES.has(table)) {
+    const locked = rows.find((row) => String(row.username || "") === String(actor) && String(row.date || "") === String(date) && row.workflowStage !== "draft");
+    if (locked) throw Object.assign(new Error("teller_eod_submitted_transaction_locked"), { status: 403 });
+  }
+  if (COLLECTOR_LOCKED_TRANSACTION_TABLES.has(table)) {
+    const eodRows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "eodReconciliations" });
+    const locked = (Array.isArray(eodRows) ? eodRows : []).find((row) => collectorRoles.has(String(row.role || "")) && String(row.username || "") === String(actor) && String(row.date || "") === String(date) && row.status !== "draft");
+    if (locked) throw Object.assign(new Error("collector_eod_submitted_transaction_locked"), { status: 403 });
+  }
 }
 
 function isStaffAccountNumberCollision(error) {
