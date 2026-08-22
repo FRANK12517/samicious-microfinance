@@ -63,13 +63,14 @@ export function isWithinScope(context, requestedScope) {
   if (normalizeRole(context.role) === "Administrator" || normalizeRole(context.role) === "Developer") return true;
   const allowed = ["branchId", "tenantId", "organizationId", "schoolId", "districtId", "regionId"];
   return allowed.every((key) => {
-    if (requestedScope[key] == null || context[key] == null) return true;
     if (key === "branchId") {
+      if (requestedScope[key] == null) return true;
       const raw = context.authorizedBranchIds || context.branchIds || context.authorizedBranches;
       const ids = Array.isArray(raw) ? raw.map((value) => typeof value === "object" ? value.id : value).filter(Boolean).map(String) : [];
       if (context.branchId != null) ids.push(String(context.branchId));
-      return ids.length ? ids.includes(String(requestedScope[key])) : String(requestedScope[key]) === String(context[key]);
+      return ids.length ? ids.includes(String(requestedScope[key])) : false;
     }
+    if (requestedScope[key] == null || context[key] == null) return true;
     return String(requestedScope[key]) === String(context[key]);
   });
 }
@@ -84,6 +85,10 @@ export function authorize(context, { permission, scope } = {}) {
 
 export function authorizeRpc(context, fnName, params = {}) {
   const table = String(params.p_table || "");
+  const role = normalizeRole(context?.role);
+  const data = params?.p_data && typeof params.p_data === "object" ? params.p_data : {};
+  const auditTables = new Set(["activityLog", "credentialAuditLog", "security_audit_log"]);
+  if (fnName === "rpc_table_delete" && auditTables.has(table)) return { allowed: false, status: 403, reason: "immutable_audit_record" };
   if (["rpc_settings_capabilities", "rpc_settings_read", "rpc_settings_save"].includes(fnName)) {
     const base = authorize(context, { permission: RPC_POLICY[fnName].permission });
     if (!base.allowed) return base;
@@ -98,6 +103,14 @@ export function authorizeRpc(context, fnName, params = {}) {
   }
   if (SUPPORT_MANAGEMENT_TABLES.has(table)) return { allowed: false, status: 403, reason: "use_protected_support_endpoint" };
   if (EOD_SCOPED_TABLES.has(table)) {
+    if (fnName === "rpc_table_delete" && role !== "Administrator") return { allowed: false, status: 403, reason: "eod_delete_forbidden" };
+    if (["Teller", "Cashier", "Susu Collector", "Field Officer", "Loan Officer"].includes(role)) {
+      const identity = String(data.username || data.tellerId || data.collectorId || "");
+      if (identity && identity !== String(context?.username || "")) return { allowed: false, status: 403, reason: "eod_identity_forbidden" };
+      const protectedFields = ["approvedAt","approvedBy","approvedByUserId","ceoApprovedAt","ceoApprovedBy","ceoDecisionAt","ceoDecisionBy","closedAt","cashReceivedBy","cashHandoverAt"];
+      if (protectedFields.some((field) => data[field] != null && data[field] !== "")) return { allowed: false, status: 403, reason: "eod_approval_fields_forbidden" };
+      if (String(data.submissionStatus || "").toUpperCase() === "CLOSED" || String(data.workflowStage || "") === "ceo_approved") return { allowed: false, status: 403, reason: "eod_close_forbidden" };
+    }
     const finalTillStage = String(params?.p_data?.workflowStage || "");
     if (EOD_FINAL_APPROVAL_TABLES.has(table) || (table === "tellerTillClosings" && ["ceo_approved", "ceo_rejected"].includes(finalTillStage)) || (table === "eodReconciliations" && ["CLOSED", "REJECTED BY ADMINISTRATOR/CEO", "RETURNED FOR CORRECTION"].includes(String(params?.p_data?.submissionStatus || "")))) {
       if (normalizeRole(context?.role) !== "Administrator") return { allowed: false, status: 403, reason: "administrator_required" };

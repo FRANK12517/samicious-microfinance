@@ -133,6 +133,13 @@ async function validateUserUpsert(params, token) {
   if (duplicate) throw Object.assign(new Error("username_already_taken"), { status: 409 });
   const role = String(data.role || existing?.role || "").trim();
   const normalized = Object.assign({}, existing || {}, data, { username });
+  const operationalRoles = new Set(["Teller", "Cashier", "Susu Collector"]);
+  const requestedAccount = String(data.staffAccountNumber || existing?.staffAccountNumber || "").trim();
+  if (operationalRoles.has(role) && requestedAccount) {
+    const duplicateAccount = (Array.isArray(rows) ? rows : []).find((row) => String(row.staffAccountNumber || "").trim() === requestedAccount && String(row.username || "") !== username);
+    if (duplicateAccount) throw Object.assign(new Error("staff_account_number_already_taken"), { status: 409 });
+  }
+  if (operationalRoles.has(role) && existing?.staffAccountNumber && data.staffAccountNumber && String(data.staffAccountNumber).trim() !== String(existing.staffAccountNumber).trim()) throw Object.assign(new Error("staff_account_number_immutable"), { status: 403 });
   /* The browser may display this field but can never choose or replace it.
      Existing numbers remain attached to the staff record for its full lifecycle. */
   if (existing?.staffAccountNumber) normalized.staffAccountNumber = existing.staffAccountNumber;
@@ -195,6 +202,31 @@ async function assertTellerEodMutationAllowed(params, token, context) {
     const eodRows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "eodReconciliations" });
     const locked = (Array.isArray(eodRows) ? eodRows : []).find((row) => collectorRoles.has(String(row.role || "")) && String(row.username || "") === String(actor) && String(row.date || "") === String(date) && row.status !== "draft");
     if (locked) throw Object.assign(new Error("collector_eod_submitted_transaction_locked"), { status: 403 });
+  }
+}
+
+async function assertEodDeleteAllowed(params, token, context) {
+  const table = String(params?.p_table || "");
+  const key = String(params?.p_key || params?.p_id || "");
+  if (["eodReconciliations", "tellerTillClosings"].includes(table)) {
+    const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: table });
+    const row = (Array.isArray(rows) ? rows : []).find((item) => String(item.id || "") === key);
+    if (row && (row.submissionStatus === "CLOSED" || row.status === "closed" || row.workflowStage === "ceo_approved")) throw Object.assign(new Error("closed_eod_immutable"), { status: 403 });
+  }
+  if (["transactions", "loanRepayments", "loans", "cashHandovers"].includes(table)) {
+    const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: table });
+    const row = (Array.isArray(rows) ? rows : []).find((item) => String(item.id || "") === key);
+    const actor = row?.actorUserId || row?.disbursedByUserId || row?.receivingOfficerUserId || row?.username;
+    const date = row?.date || row?.transactionDate || String(row?.disbursedAt || "").slice(0, 10);
+    if (actor && date) {
+      const [tillRows, eodRows] = await Promise.all([
+        supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "tellerTillClosings" }),
+        supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "eodReconciliations" })
+      ]);
+      const tillClosed = (Array.isArray(tillRows) ? tillRows : []).some(item => String(item.username || "") === String(actor) && String(item.date || "") === String(date) && ["manager_approved", "ceo_approved"].includes(String(item.workflowStage || "")));
+      const collectorClosed = (Array.isArray(eodRows) ? eodRows : []).some(item => String(item.username || "") === String(actor) && String(item.date || "") === String(date) && (item.submissionStatus === "CLOSED" || item.status === "closed"));
+      if (tillClosed || collectorClosed) throw Object.assign(new Error("closed_eod_transaction_immutable"), { status: 403 });
+    }
   }
 }
 
@@ -360,12 +392,20 @@ function json(res, status, value) {
 }
 
 const BRANCH_SCOPED_READ_TABLES = new Set(["users","branches","transactions","loanRepayments","loans","accounts","customers","eodReconciliations","cashHandovers","tellerTillClosings","notifications","activityLog","adminTxnNotifications"]);
-function applyBranchManagerReadScope(data, table, context) {
-  if (String(context?.role || "") !== "Branch Manager" || !BRANCH_SCOPED_READ_TABLES.has(table)) return data;
+const OWN_EOD_READ_TABLES = new Set(["eodReconciliations", "tellerTillClosings", "cashHandovers", "channelReconciliations"]);
+function applyReadScope(data, table, context) {
+  const role = String(context?.role || "");
+  if (role === "Administrator" || role === "Developer") return data;
   const raw = context?.authorizedBranchIds || context?.branchIds || context?.authorizedBranches;
-  const ids = new Set((Array.isArray(raw) ? raw.map(x => typeof x === "object" ? x.id : x) : []).filter(Boolean).map(String));
-  if (context?.branchId) ids.add(String(context.branchId));
-  const scoped = (row) => row && (table === "branches" ? ids.has(String(row.id)) : row.branchId != null && ids.has(String(row.branchId)));
+  const branchIds = new Set((Array.isArray(raw) ? raw.map(x => typeof x === "object" ? x.id : x) : []).filter(Boolean).map(String));
+  if (context?.branchId) branchIds.add(String(context.branchId));
+  let scoped;
+  if (role === "Branch Manager" && BRANCH_SCOPED_READ_TABLES.has(table)) {
+    scoped = (row) => row && (table === "branches" ? branchIds.has(String(row.id)) : row.branchId != null && branchIds.has(String(row.branchId)));
+  } else if (["Teller", "Cashier", "Susu Collector"].includes(role) && OWN_EOD_READ_TABLES.has(table)) {
+    const username = String(context?.username || context?.userId || "");
+    scoped = (row) => row && String(row.username || row.actorUserId || row.tellerId || row.collectorId || "") === username;
+  } else return data;
   if (Array.isArray(data)) return data.filter(scoped);
   return scoped(data) ? data : null;
 }
@@ -409,6 +449,7 @@ async function handle(req, res) {
     if (fnName === "rpc_migrate_privileged_defaults") return json(res, 200, { data: await migratePrivilegedDefaults(params, token) });
     let data;
     if (fnName === "rpc_table_upsert") await assertTellerEodMutationAllowed(params, token, context);
+    if (fnName === "rpc_table_delete") await assertEodDeleteAllowed(params, token, context);
     if (fnName === "rpc_table_upsert" && params.p_table === "users") {
       let lastError;
       for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -426,7 +467,7 @@ async function handle(req, res) {
     } else {
       data = await supabaseRpc(fnName, params);
     }
-    const scopedData = ["rpc_table_select_all","rpc_table_select_one","rpc_table_select_by"].includes(fnName) ? applyBranchManagerReadScope(data, params.p_table, context) : data;
+    const scopedData = ["rpc_table_select_all","rpc_table_select_one","rpc_table_select_by"].includes(fnName) ? applyReadScope(data, params.p_table, context) : data;
     const safeData = params.p_table === "users" ? redactCredentialMaterial(scopedData) : scopedData;
     return json(res, 200, { data: safeData });
   } catch (error) {
