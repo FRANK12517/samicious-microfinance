@@ -1,5 +1,5 @@
 import http from "node:http";
-import { pbkdf2Sync, randomBytes } from "node:crypto";
+import { pbkdf2Sync, randomBytes, randomInt } from "node:crypto";
 import { authorizeRpc, auditEvent, RPC_POLICY, safeAuditEvent } from "./authz.mjs";
 
 const PORT = Number(process.env.PORT || 8787);
@@ -41,6 +41,9 @@ async function supabaseRpc(name, params) {
 const STAFF_PASSWORD_ITERATIONS = 150000;
 const STAFF_PASSWORD_SYMBOLS = "@#$%^&*()";
 const PRIVILEGED_DEFAULTS_VERSION = "2026-08-privileged-defaults-v2";
+const STAFF_ACCOUNT_ROLES = new Set(["Teller", "Susu Collector"]);
+const STAFF_ACCOUNT_PREFIXES = Object.freeze({Teller: "T", "Susu Collector": "SC"});
+
 const PRIVILEGED_DEFAULTS = Object.freeze({
   administrator: Object.freeze({ username: "adugyamfi", displayName: "ADUGYAMFI", fullName: "Adugyamfi", role: "Administrator", passwordHash: "ef554534c1e3da33ac5d79f62346d43d661bcc846ae733aebb7f6326f3ed0261", passwordSalt: "e2b3ae184c3792b4ad07449b4435f820", passwordIterations: 150000, passwordAlgo: "PBKDF2-SHA256" }),
   developer: Object.freeze({ username: "frank", displayName: "FRANK", fullName: "Frank", role: "Developer", passwordHash: "d36ce14e591a9b98541cbe22b090206a7cdbf4df91c3fc5af01512ff6a7eccb3", passwordSalt: "47988073b26e91eb07d2d7a0ca7d46b3", passwordIterations: 150000, passwordAlgo: "PBKDF2-SHA256" })
@@ -79,6 +82,37 @@ function usernameCandidates(fullName) {
   return [...new Set([first, surname, first + surname].filter(Boolean))];
 }
 
+async function allocateStaffAccountNumber(role, token, existingRows) {
+  if (!STAFF_ACCOUNT_ROLES.has(role)) throw Object.assign(new Error("staff_account_number_not_applicable"), { status: 400 });
+  const rows = Array.isArray(existingRows) ? existingRows : await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "users" });
+  const used = new Set(rows.map((row) => String(row.staffAccountNumber || "").trim()).filter(Boolean));
+  const prefix = STAFF_ACCOUNT_PREFIXES[role];
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const candidate = `SAM-${prefix}-${randomInt(100000, 1000000)}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  throw Object.assign(new Error("staff_account_number_generation_failed"), { status: 503 });
+}
+
+async function generateStaffAccountNumber(params, token) {
+  const role = String(params?.p_role || "").trim();
+  const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "users" });
+  return { staffAccountNumber: await allocateStaffAccountNumber(role, token, rows) };
+}
+
+async function backfillStaffAccountNumbers(params, token) {
+  const rows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "users" });
+  const working = Array.isArray(rows) ? rows.map((row) => ({ ...row })) : [];
+  const changed = [];
+  for (const row of working) {
+    if (!STAFF_ACCOUNT_ROLES.has(String(row.role || "").trim()) || String(row.staffAccountNumber || "").trim()) continue;
+    row.staffAccountNumber = await allocateStaffAccountNumber(String(row.role).trim(), token, working);
+    await supabaseRpc("rpc_table_upsert", { p_token: token, p_table: "users", p_data: row });
+    changed.push({ username: row.username, staffAccountNumber: row.staffAccountNumber });
+  }
+  return { updated: changed.length, records: changed };
+}
+
 async function validateUserUpsert(params, token) {
   const data = params?.p_data;
   if (!data || typeof data !== "object") throw Object.assign(new Error("invalid_user_record"), { status: 400 });
@@ -97,7 +131,14 @@ async function validateUserUpsert(params, token) {
     return !sameRecord;
   });
   if (duplicate) throw Object.assign(new Error("username_already_taken"), { status: 409 });
-  return Object.assign({}, existing || {}, data, { username });
+  const role = String(data.role || existing?.role || "").trim();
+  const normalized = Object.assign({}, existing || {}, data, { username });
+  /* The browser may display this field but can never choose or replace it.
+     Existing numbers remain attached to the staff record for its full lifecycle. */
+  if (existing?.staffAccountNumber) normalized.staffAccountNumber = existing.staffAccountNumber;
+  else if (STAFF_ACCOUNT_ROLES.has(role)) normalized.staffAccountNumber = await allocateStaffAccountNumber(role, token, rows);
+  else delete normalized.staffAccountNumber;
+  return normalized;
 }
 
 async function verifyLoginRequest(params) {
@@ -117,6 +158,11 @@ async function verifyLoginRequest(params) {
   }
   if (!valid) return { ok: false, reason: "invalid_credentials" };
   return { ok: true, username: material.username, role: material.role, active: material.active !== false, usernameRevoked: false, passwordRevoked: false, sessionEpoch: Number(material.sessionEpoch) || 0 };
+}
+
+function isStaffAccountNumberCollision(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("staffaccountnumber") || message.includes("staff_account_number") || message.includes("duplicate key") || message.includes("unique constraint");
 }
 
 function redactCredentialMaterial(value) {
@@ -309,9 +355,27 @@ async function handle(req, res) {
     if (fnName === "rpc_help_content_delete") return json(res, 200, { data: await deleteHelpContent(params, token) });
     if (fnName === "rpc_generate_username") return json(res, 200, { data: await generateUsername(params, token) });
     if (fnName === "rpc_hash_staff_password") return json(res, 200, { data: await hashStaffPasswordRequest(params) });
+    if (fnName === "rpc_generate_staff_account_number") return json(res, 200, { data: await generateStaffAccountNumber(params, token) });
+    if (fnName === "rpc_backfill_staff_account_numbers") return json(res, 200, { data: await backfillStaffAccountNumbers(params, token) });
     if (fnName === "rpc_migrate_privileged_defaults") return json(res, 200, { data: await migratePrivilegedDefaults(params, token) });
-    if (fnName === "rpc_table_upsert" && params.p_table === "users") params.p_data = await validateUserUpsert(params, token);
-    const data = await supabaseRpc(fnName, params);
+    let data;
+    if (fnName === "rpc_table_upsert" && params.p_table === "users") {
+      let lastError;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          params.p_data = await validateUserUpsert(params, token);
+          data = await supabaseRpc(fnName, params);
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          if (!isStaffAccountNumberCollision(error) || attempt === 2) throw error;
+        }
+      }
+      if (lastError) throw lastError;
+    } else {
+      data = await supabaseRpc(fnName, params);
+    }
     const safeData = params.p_table === "users" ? redactCredentialMaterial(data) : data;
     return json(res, 200, { data: safeData });
   } catch (error) {

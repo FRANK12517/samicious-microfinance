@@ -17,7 +17,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
 
 export const DEVELOPER_TABLES = new Set(["devSmsConfig", "security_audit_log"]);
 export const AUTHORIZATION_TABLES = new Set(["users", "userRoles", "roles", "permissions", "tenantScopes"]);
-export const ADMINISTRATOR_ONLY_RPCS = new Set(["rpc_generate_username", "rpc_hash_staff_password", "rpc_migrate_privileged_defaults", "rpc_help_content_save", "rpc_help_content_delete", "rpc_support_report_list"]);
+export const ADMINISTRATOR_ONLY_RPCS = new Set(["rpc_generate_username", "rpc_hash_staff_password", "rpc_generate_staff_account_number", "rpc_backfill_staff_account_numbers", "rpc_migrate_privileged_defaults", "rpc_help_content_save", "rpc_help_content_delete", "rpc_support_report_list"]);
 export const SUPPORT_MANAGEMENT_TABLES = new Set(["helpContent", "supportReports"]);
 export const EOD_SCOPED_TABLES = new Set(["eodReconciliations", "cashHandovers", "channelReconciliations", "journalVouchers", "eodDayClosures", "systemEodRuns", "loanInterestAccruals", "savingsInterestAccruals", "savingsInterestPostings", "dailyReports"]);
 export const EOD_FINAL_APPROVAL_TABLES = new Set(["eodDayClosures", "systemEodRuns"]);
@@ -28,6 +28,8 @@ export const RPC_POLICY = Object.freeze({
   rpc_create_session: { public: true },
   rpc_generate_username: { permission: "admin:write" },
   rpc_hash_staff_password: { permission: "admin:write" },
+  rpc_generate_staff_account_number: { permission: "admin:write" },
+  rpc_backfill_staff_account_numbers: { permission: "admin:write" },
   rpc_migrate_privileged_defaults: { permission: "admin:write" },
   rpc_settings_capabilities: { permission: "data:read" },
   rpc_settings_read: { permission: "data:read" },
