@@ -160,6 +160,28 @@ async function verifyLoginRequest(params) {
   return { ok: true, username: material.username, role: material.role, active: material.active !== false, usernameRevoked: false, passwordRevoked: false, sessionEpoch: Number(material.sessionEpoch) || 0 };
 }
 
+const TELLER_LOCKED_TRANSACTION_TABLES = new Set(["transactions", "loanRepayments", "loans", "cashHandovers", "vaultTransfers"]);
+
+async function assertTellerEodMutationAllowed(params, token, context) {
+  const table = String(params?.p_table || "");
+  const data = params?.p_data && typeof params.p_data === "object" ? params.p_data : {};
+  if (!TELLER_LOCKED_TRANSACTION_TABLES.has(table) && table !== "tellerTillClosings") return;
+  if (String(context?.role || "") === "Administrator") return;
+  const tillRows = await supabaseRpc("rpc_table_select_all", { p_token: token, p_table: "tellerTillClosings" });
+  const rows = Array.isArray(tillRows) ? tillRows : [];
+  if (table === "tellerTillClosings") {
+    const existing = rows.find((row) => String(row.id || "") === String(data.id || ""));
+    if (existing && (existing.workflowStage === "manager_approved" || existing.workflowStage === "ceo_approved")) throw Object.assign(new Error("teller_eod_closed_immutable"), { status: 403 });
+    if (existing && existing.workflowStage !== "draft" && String(existing.username || "") === String(data.username || context?.username || "")) throw Object.assign(new Error("teller_eod_submitted_locked"), { status: 403 });
+    return;
+  }
+  const actor = data.actorUserId || data.disbursedByUserId || data.receivingOfficerUserId || data.username;
+  const date = data.date || data.transactionDate;
+  if (!actor || !date) return;
+  const locked = rows.find((row) => String(row.username || "") === String(actor) && String(row.date || "") === String(date) && row.workflowStage !== "draft");
+  if (locked) throw Object.assign(new Error("teller_eod_submitted_transaction_locked"), { status: 403 });
+}
+
 function isStaffAccountNumberCollision(error) {
   const message = String(error?.message || error || "").toLowerCase();
   return message.includes("staffaccountnumber") || message.includes("staff_account_number") || message.includes("duplicate key") || message.includes("unique constraint");
@@ -359,6 +381,7 @@ async function handle(req, res) {
     if (fnName === "rpc_backfill_staff_account_numbers") return json(res, 200, { data: await backfillStaffAccountNumbers(params, token) });
     if (fnName === "rpc_migrate_privileged_defaults") return json(res, 200, { data: await migratePrivilegedDefaults(params, token) });
     let data;
+    if (fnName === "rpc_table_upsert") await assertTellerEodMutationAllowed(params, token, context);
     if (fnName === "rpc_table_upsert" && params.p_table === "users") {
       let lastError;
       for (let attempt = 0; attempt < 3; attempt += 1) {
